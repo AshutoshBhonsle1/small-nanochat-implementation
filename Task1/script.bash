@@ -8,3 +8,11 @@ export NANOCHAT_BASE_DIR="./Task1"
 
 # Download the dataset (each shard is ~90Mb, so 6 shards is apprximately 500Mb)
 python -m nanochat.dataset -n 6
+
+# Train the 32k vocabulary size tokenizer and save it
+python -m scripts.tok_train --vocab-size 32768 
+mv Task1/tokenizer Task1/tokenizer_32k
+
+# Train the 8k vocabulary size tokenizer and save it
+python -m scripts.tok_train --vocab-size 8192 
+mv Task1/tokenizer Task1/tokenizer_8k

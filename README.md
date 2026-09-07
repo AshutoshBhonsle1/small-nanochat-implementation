@@ -81,6 +81,27 @@ bash Task1/script.bash
 
 The script downloads six ClimbMix shards (approximately 500 MB in total) into `Task1/base_data_climbmix`.
 
+## Train the tokenizers
+
+Tokenizer training is included in [`Task1/script.bash`](Task1/script.bash). Running the script trains both required tokenizers with nanochat's Rust BPE tokenizer trainer:
+
+- a 32k-vocabulary tokenizer, saved to `Task1/tokenizer_32k`
+- an 8k-vocabulary tokenizer, saved to `Task1/tokenizer_8k`
+
+The script sets `NANOCHAT_BASE_DIR="./Task1"`, so the tokenizers are saved alongside the downloaded dataset.
+
+The resulting files are:
+
+```text
+Task1/
+├── tokenizer_32k/
+│   ├── tokenizer.pkl
+│   └── token_bytes.pt
+└── tokenizer_8k/
+    ├── tokenizer.pkl
+    └── token_bytes.pt
+```
+
 ## Quick start
 
 For a fresh Linux or WSL installation, the complete sequence is:
