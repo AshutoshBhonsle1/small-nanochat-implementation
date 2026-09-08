@@ -6,8 +6,8 @@ source .venv/bin/activate
 # Set the base directory for nanochat (Optional, directory is set by default to the home directory, but this is useful if you want control of which directory the dataset is downloaded to)
 export NANOCHAT_BASE_DIR="./task1"
 
-# Download the dataset (each shard is ~90Mb, so 6 shards is apprximately 500Mb)
-python -m nanochat.dataset -n 6
+# Download the dataset using custom argument for size in MB.
+python -m nanochat.dataset -s 500
 
 # Train the 32k vocabulary size tokenizer and save it
 python -m scripts.tok_train --vocab-size 32768 
