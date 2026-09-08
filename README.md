@@ -76,24 +76,24 @@ The environment must be active whenever you run the assignment code.
 From the repository root, with the virtual environment activated, run:
 
 ```bash
-bash Task1/script.bash
+bash task1/script.bash
 ```
 
-The script downloads six ClimbMix shards (approximately 500 MB in total) into `Task1/base_data_climbmix`.
+The script downloads six ClimbMix shards (approximately 500 MB in total) into `task1/base_data_climbmix`.
 
 ## Train the tokenizers
 
-Tokenizer training is included in [`Task1/script.bash`](Task1/script.bash). Running the script trains both required tokenizers with nanochat's Rust BPE tokenizer trainer:
+Tokenizer training is included in [`task1/script.bash`](task1/script.bash). Running the script trains both required tokenizers with nanochat's Rust BPE tokenizer trainer:
 
-- a 32k-vocabulary tokenizer, saved to `Task1/tokenizer_32k`
-- an 8k-vocabulary tokenizer, saved to `Task1/tokenizer_8k`
+- a 32k-vocabulary tokenizer, saved to `task1/tokenizer_32k`
+- an 8k-vocabulary tokenizer, saved to `task1/tokenizer_8k`
 
-The script sets `NANOCHAT_BASE_DIR="./Task1"`, so the tokenizers are saved alongside the downloaded dataset.
+The script sets `NANOCHAT_BASE_DIR="./task1"`, so the tokenizers are saved alongside the downloaded dataset.
 
 The resulting files are:
 
 ```text
-Task1/
+task1/
 ├── tokenizer_32k/
 │   ├── tokenizer.pkl
 │   └── token_bytes.pt
@@ -210,10 +210,10 @@ Originally the script compared nanochat's default tokenizer (`get_tokenizer()`, 
 +print_comparison("32k", tokenizer_results['32k'], "8k", tokenizer_results['8k'], all_text)
 ```
 
-Run it from the repository root, with the virtual environment activated and `NANOCHAT_BASE_DIR` set as in [`Task1/script.bash`](Task1/script.bash):
+Run it from the repository root, with the virtual environment activated and `NANOCHAT_BASE_DIR` set as in [`task1/script.bash`](task1/script.bash):
 
 ```bash
-export NANOCHAT_BASE_DIR="./Task1"
+export NANOCHAT_BASE_DIR="./task1"
 python -m scripts.tok_eval
 ```
 
@@ -228,7 +228,7 @@ git clone https://git.liacs.nl/s5107911/agenticllm-assignment1-group3.git
 cd agenticllm-assignment1-group3
 uv sync --extra gpu  # use --extra cpu for CPU-only execution
 source .venv/bin/activate
-bash Task1/script.bash
+bash task1/script.bash
 ```
 
 Run all commands from the WSL/Linux terminal. If you chose the CPU setup, replace `gpu` with `cpu` in the `uv sync` command.
@@ -236,7 +236,7 @@ Run all commands from the WSL/Linux terminal. If you chose the CPU setup, replac
 ## Repository layout
 
 ```text
-Task1/
+task1/
 |-- base_data_climbmix/  # downloaded ClimbMix shards
 `-- script.bash          # dataset download script
 nanochat/                # project source code
