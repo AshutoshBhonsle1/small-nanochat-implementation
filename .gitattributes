@@ -1,0 +1,10 @@
+# Normalize all text files to LF line endings in the repository,
+# regardless of the platform they were checked out or committed from.
+# This avoids CRLF breaking scripts run under WSL/Linux (bash chokes on
+# the trailing \r), while LF causes no issues on Windows.
+* text=auto eol=lf
+
+# Explicitly mark known binary formats so they are never touched.
+*.pt binary
+*.png binary
+*.pkl binary
