@@ -16,3 +16,6 @@ mv task1/tokenizer task1/tokenizer_32k
 # Train the 8k vocabulary size tokenizer and save it
 python -m scripts.tok_train --vocab-size 8192 
 mv task1/tokenizer task1/tokenizer_8k
+
+# Compare the two tokenizers using the evaluation script
+python -m scripts.tok_eval
