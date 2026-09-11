@@ -310,6 +310,33 @@ Usage:
 python -m scripts.tok_eval --text "your custom sentence here"
 ```
 
+To make the compression tangible rather than just a ratio number, when `--text` is passed the script also prints the actual token split for each tokenizer, using `id_to_token` to decode each token id back to its text piece:
+
+```diff
+ # Print comparison
+ print_comparison("32k", tokenizer_results['32k'], "8k", tokenizer_results['8k'], all_text)
++
++# When evaluating custom text, show the actual token split for each tokenizer
++if args.text is not None:
++    for tokenizer_name, tokenizer in tokenizers.items():
++        encoded = tokenizer.encode(args.text)
++        pieces = [tokenizer.id_to_token(token_id) for token_id in encoded]
++        print(f"\n{tokenizer_name} tokenizer split ({len(pieces)} tokens):")
++        print("|".join(pieces))
+```
+
+For example, `python -m scripts.tok_eval --text "The quick brown fox jumps over the lazy dog, tokenization is fascinating."` prints:
+
+```text
+32k tokenizer split (15 tokens):
+The| quick| brown| fox| jumps| over| the| lazy| dog|,| token|ization| is| fascinating|.
+
+8k tokenizer split (20 tokens):
+The| quick| brown| f|ox| j|umps| over| the| l|az|y| dog|,| to|ken|ization| is| fascinating|.
+```
+
+The smaller 8k vocabulary has to break common words like "fox", "jumps", and "lazy" into multiple subword pieces, while the 32k vocabulary has room to keep them as single tokens — visibly showing where the extra compression comes from.
+
 ## Quick start
 
 For a fresh Linux or WSL installation, the complete sequence is:

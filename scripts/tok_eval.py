@@ -178,12 +178,14 @@ tokenizer_dirs = {
     "8k": os.path.join(base_dir, "tokenizer_8k"),
 }
 
+tokenizers = {}
 tokenizer_results = {}
 vocab_sizes = {}
 
 for tokenizer_name, tokenizer_dir in tokenizer_dirs.items():
 
     tokenizer = RustBPETokenizer.from_directory(tokenizer_dir)
+    tokenizers[tokenizer_name] = tokenizer
 
     vocab_sizes[tokenizer_name] = tokenizer.get_vocab_size()
     tokenizer_results[tokenizer_name] = {}
@@ -251,3 +253,11 @@ def print_comparison(baseline_name, baseline_results, other_name, other_results,
 
 # Print comparison
 print_comparison("32k", tokenizer_results['32k'], "8k", tokenizer_results['8k'], all_text)
+
+# When evaluating custom text, show the actual token split for each tokenizer
+if args.text is not None:
+    for tokenizer_name, tokenizer in tokenizers.items():
+        encoded = tokenizer.encode(args.text)
+        pieces = [tokenizer.id_to_token(token_id) for token_id in encoded]
+        print(f"\n{tokenizer_name} tokenizer split ({len(pieces)} tokens):")
+        print("|".join(pieces))
