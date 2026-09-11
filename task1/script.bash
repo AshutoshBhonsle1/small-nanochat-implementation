@@ -1,5 +1,11 @@
 #!/bin/bash
 
+#create a virtual environment
+uv venv
+
+#download dependencies
+uv sync --extra gpu
+
 # Activate the virtual environment
 source .venv/bin/activate
 
