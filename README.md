@@ -257,6 +257,59 @@ python -m scripts.tok_eval
 
 For each text sample, the printed table reports the byte count, each tokenizer's token count (sequence length) and ratio (bytes per token), and the relative difference in sequence length between the two. As expected, the 32k tokenizer compresses text into fewer tokens than the 8k tokenizer across every sample, at the cost of a larger vocabulary.
 
+To evaluate the tokenizers on your own text instead of the built-in samples, a `--text` argument was added. When it is passed, the built-in samples (and the ClimbMix train/val shard loading, which is otherwise done unconditionally) are skipped, and the comparison runs on just the given text:
+
+```diff
++parser = argparse.ArgumentParser(description="Evaluate tokenizer compression ratio and sequence length")
++parser.add_argument("--text", type=str, default=None, help="Custom text to evaluate instead of the built-in samples")
++args = parser.parse_args()
++
+ # Random text I got from a random website this morning
+ news_text = r"""
+@@
+-# The tokenizer was trained on data from earlier shards, so it has seen this data
+-train_docs = next(parquets_iter_batched(split="train"))
+-train_text = "\n".join(train_docs)
+-val_docs = next(parquets_iter_batched(split="val"))
+-val_text = "\n".join(val_docs)
+-
+-all_text = [
+-    ("news", news_text),
+-    ("korean", korean_text),
+-    ("code", code_text),
+-    ("math", math_text),
+-    ("science", science_text),
+-    ("climbmix-train", train_text),
+-]
+-if val_text:
+-    all_text.append(("climbmix-val", val_text))
++if args.text is not None:
++    all_text = [("custom", args.text)]
++else:
++    # The tokenizer was trained on data from earlier shards, so it has seen this data
++    train_docs = next(parquets_iter_batched(split="train"))
++    train_text = "\n".join(train_docs)
++    val_docs = next(parquets_iter_batched(split="val"))
++    val_text = "\n".join(val_docs)
++
++    all_text = [
++        ("news", news_text),
++        ("korean", korean_text),
++        ("code", code_text),
++        ("math", math_text),
++        ("science", science_text),
++        ("climbmix-train", train_text),
++    ]
++    if val_text:
++        all_text.append(("climbmix-val", val_text))
+```
+
+Usage:
+
+```bash
+python -m scripts.tok_eval --text "your custom sentence here"
+```
+
 ## Quick start
 
 For a fresh Linux or WSL installation, the complete sequence is:
