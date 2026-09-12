@@ -9,12 +9,17 @@ export NANOCHAT_BASE_DIR="./task1"
 # Download the dataset using custom argument for size in MB.
 python -m nanochat.dataset -s 500
 
-# Train the 32k vocabulary size tokenizer and save it
-python -m scripts.tok_train --vocab-size 32768 
+# Train the 32k vocabulary size tokenizer and save it.
+# Remove any previous copy first: `mv src dst` moves src *into* dst (nesting) instead of
+# overwriting it if dst already exists as a directory, which would otherwise pile up stale
+# nested copies on repeated runs.
+python -m scripts.tok_train --vocab-size 32768
+rm -rf task1/tokenizer_32k
 mv task1/tokenizer task1/tokenizer_32k
 
 # Train the 8k vocabulary size tokenizer and save it
-python -m scripts.tok_train --vocab-size 8192 
+python -m scripts.tok_train --vocab-size 8192
+rm -rf task1/tokenizer_8k
 mv task1/tokenizer task1/tokenizer_8k
 
 # Compare the two tokenizers using the evaluation script
