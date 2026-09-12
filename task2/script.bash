@@ -34,7 +34,7 @@ python -m nanochat.dataset -s 500
 # Pretrain the depth-4 base model.
 python -m scripts.base_train \
     --depth=4 \
-    --eval-every=50
+    --eval-every=100
 
 # Final evaluation: bpb on both splits plus qualitative (unconditioned) completions from the
 # finished checkpoint, saved to a log file for pulling numbers/quotes into the report.
