@@ -1,0 +1,74 @@
+Autodetected device type: cuda
+Evaluating model: base_model (step 528)
+Eval modes: bpb, sample
+
+================================================================================
+Model Samples
+================================================================================
+
+Conditioned samples:
+--------------------------------------------------------------------------------
+<|bos|>The capital of France is the capital of France. The capital of France is the capital of France. The
+--------------------------------------------------------------------------------
+<|bos|>The chemical symbol of gold is the gold. The gold is the gold. The gold is the gold. The
+--------------------------------------------------------------------------------
+<|bos|>If yesterday was Friday, then tomorrow will be the next day. The next day will be the next day. The next day
+--------------------------------------------------------------------------------
+<|bos|>The opposite of hot is the heat of the sun, the heat of the sun is the heat of the
+--------------------------------------------------------------------------------
+<|bos|>The planets of the solar system are: the solar system, the solar system, the solar system, the solar system,
+--------------------------------------------------------------------------------
+<|bos|>My favorite color is the color of the color. I have a color that is not a color.
+--------------------------------------------------------------------------------
+<|bos|>If 5*x + 3 = 13, then x is the number of 5*x + 3*x + 3*
+
+Unconditioned samples:
+--------------------------------------------------------------------------------
+<|bos|>Coordination In A Tour 10003
+Coordination
+They are divided into clusters in eight subjects, with the following group I.
+Coordination Views
+– "The Future of Finishing"
+-- And with the end of March, more than 3,000 followers have asked the same amount of candidates in the work before or After they're finish completing their complete course or completing their complete course.
+Also in one of the Gouts, the "Butar Mount", makes it impossible to spot the disruption of any organ after completing. The mass of protein pieces, which I was able to spot by the person beside
+--------------------------------------------------------------------------------
+<|bos|>Controlling levels include: Codes below stated that involving CPU and hardware == Codes above 10" CPU/without resolution display checks all the time depending on how quickly and use requests in the date/ nap.
+
+Add Comments
+2 questions
+Q: What are the added features for __in__ D that the CPU/child IS At room temperature? (G_attum) 10 , Codes for all those normal processing experience that the CPU will achieve since 78 is controlled.
+
+rust my Networks for put in the pseudo code directions the sprites are "grape so all" commands. Thus converting this class is too small
+--------------------------------------------------------------------------------
+<|bos|>Marine And Marks | Editorially Saw It is a type of Ocean fish taken from South Africa on behalf of marine biologists, environmental scientists, and conservationists. With a goal to advance, a pet, that might be vexing from one new marine group, he measured the scripting point of an introduction of two other species.
+"We haven't made more sense whether we can wear this particular species, but also we're fancier with the way we can: because we don't require us to refer to the box." That's the historic idea of accident bears, whose definition those pose to a community that does this process and can achieve
+--------------------------------------------------------------------------------
+<|bos|>A Beginner's Guide to Home Cooking Tips at Home Heating
+Can be a fireplace
+
+The kitchen is full of internal air, moisture, air and more. You need two elements, water, refrigerant, heating and thermostat. Water has become a must-earned little metal. It can be very complicated as a kitchen necessitate a simple and culturally tool that is critical to maintaining power and energy. The best kitchen counterintuitive is also the vibrucaturation at home.
+Knowing your kitchen needs depends on what you want to remove. However, if you land in carbide bed for demonstration, home heating at best requires Georgia Palable
+In the
+--------------------------------------------------------------------------------
+<|bos|>"We have a recently restaurant critic for a huge, creative Filipino responding-up crisis. The food maker is our most turning country in de-co cycle today and extras for people of change and community for their livelihood.
+Next year the Intras on hospitality matters most things. It is starting to evolve and reroun people to divers to find their changes, to give themselves a deeper insight into what they can do. it also makes me more likely to see how restaurants are notorious for putting people on their food and what they are locally's sales processes and close them. I am as I say that by now it's really happening in Pand
+--------------------------------------------------------------------------------
+<|bos|>The Fascinating World of the Simple, Mollo Carpathavation (Hope Ducon)
+
+Why does one of the largest huskies in human culture? A kind of street was formed when individuals living in the shape of the forest had evolutionary history beginning. The researchers from Dalh Dalharian, come to Khmerjur and Khmingachphal, Carlū and the Nangeharas 'Saleaccobakuis, the rural people of Naghezo, and Degye Namwey are learn to know the all techniques that the huskies use to these days." The researchers say that the simple is
+--------------------------------------------------------------------------------
+<|bos|>How have you collected data and indicate? - Protons insight
+(baldh ulv)
+
+I could go on two weeks, and ifyou would say a titie+wait Headball was 10knew using the scope and needed twelve of marks with a ruler, then that was the size. The new marking was 10knew and 4knew. The need to separate the marks is recorded using the observer's scope, as well as the pertainable mark. - Great if E_{zsin}}wait rules may be displayed, and 4knew dots a letter or to bring
+--------------------------------------------------------------------------------
+<|bos|>The Wave Dimensions: A. Diverse Width=5013×1516×7600
+Share:
+Link to comment
+
+There's a significant issue with Baye's Illustrating Principle, and sourcing, and preserving the stock notes immensely helps Boost Elin customers so that their preferences go down just over long. Let's dive deeper into the issue including: this picture-driven Design design frequently invites you to learn more about the world's expansion.
+Lrew Stewart and Machine Joel Patrius, Two Red Calor, Jr., of Florida-county and Anthony Buffack lived in the picturesque Sea with Central California in all
+
+================================================================================
+BPB Evaluation
+================================================================================

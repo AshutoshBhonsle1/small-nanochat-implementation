@@ -126,7 +126,7 @@ Tokenizer training is included in [`task1/script.bash`](task1/script.bash). Runn
 - a 32k-vocabulary tokenizer, saved to `task1/tokenizer_32k`
 - an 8k-vocabulary tokenizer, saved to `task1/tokenizer_8k`
 
-The script sets `NANOCHAT_BASE_DIR="./task1"`, so the tokenizers are saved alongside the downloaded dataset. These are generated artifacts (gitignored, like `task1/base_data_climbmix`), not committed to the repo — run the script to produce them locally.
+The script sets `NANOCHAT_BASE_DIR="./task1"`, so the tokenizers are saved alongside the downloaded dataset. Unlike `task1/base_data_climbmix` (gitignored — the raw dataset shards aren't committed), the trained tokenizer files themselves are committed to the repo as Task 1's deliverable.
 
 The resulting files are:
 

@@ -15,12 +15,11 @@ wandb/
 # Climbmix Dataset
 base_data_climbmix
 
-# Task 1 generated tokenizers
-task1/tokenizer_32k/
-task1/tokenizer_8k/
-
-# Task 2 generated run artifacts (tokenizer copy, checkpoints, logs, plot)
+# Task 2 generated run artifacts: tokenizer copy (a duplicate of task1/tokenizer_32k) and
+# the CORE eval bundle download (unused by Task 2) are ignored. base_checkpoints/ and logs/
+# are NOT ignored: the trained model (via Git LFS, see .gitattributes) and its metrics/eval
+# log are committed, since rerunning training just to regenerate them is expensive.
 task2/tokenizer/
-task2/base_checkpoints/
-task2/logs/
 task2/bpb_curve.png
+task2/eval_bundle.zip
+task2/eval_bundle.zip.lock

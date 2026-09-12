@@ -3,8 +3,8 @@
 # This avoids CRLF breaking scripts run under WSL/Linux (bash chokes on
 # the trailing \r), while LF causes no issues on Windows.
 * text=auto eol=lf
-
 # Explicitly mark known binary formats so they are never touched.
-*.pt binary
+# .pt (model checkpoints, can be 100s of MB) is stored via Git LFS instead of inline.
+*.pt filter=lfs diff=lfs merge=lfs -text
 *.png binary
 *.pkl binary
