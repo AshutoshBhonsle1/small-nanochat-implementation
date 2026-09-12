@@ -339,7 +339,23 @@ The smaller 8k vocabulary has to break common words like "fox", "jumps", and "la
 
 ## Task 2: Pre-Training
 
-Task 2 pre-trains a `--depth 2` nanochat base model on ClimbMix under `task2/` (mirroring the `task2/`/`task2/script.bash` layout used for Task 1), logging bits-per-byte (bpb) — not raw loss — for both the training and validation sets so the deliverable curves are apples-to-apples across runs. Training happens on a separate machine from where this repo is edited, so all logging is written to a local CSV file instead of relying on a Weights & Biases account or internet access.
+Task 2 pre-trains a `--depth 2` nanochat base model on ClimbMix under `task2/` (mirroring the `task2/script.bash` layout used for Task 1), logging bits-per-byte (bpb) — not raw loss — for both the training and validation sets so the deliverable curves are apples-to-apples across runs. Training happens on a separate machine from where this repo is edited, so all logging is written to a local CSV file instead of relying on a Weights & Biases account or internet access.
+
+### Running Task 2
+
+From the repository root, with the virtual environment activated, and after `task1/script.bash` has already been run at least once (Task 2 reuses the 32k-vocabulary tokenizer it trains):
+
+```bash
+bash task2/script.bash
+```
+
+[`task2/script.bash`](task2/script.bash):
+
+- Sets `NANOCHAT_BASE_DIR="./task2"`, so the dataset, tokenizer, checkpoints, and logs all live under `task2/`, separate from Task 1's `task1/`.
+- Copies `task1/tokenizer_32k` to `task2/tokenizer`. `base_train.py` always loads the tokenizer from `<NANOCHAT_BASE_DIR>/tokenizer` (via `nanochat.tokenizer.get_tokenizer()`/`get_token_bytes()`), and Task 1 never saves a tokenizer under that plain name (only `tokenizer_32k`/`tokenizer_8k`), so a copy is needed. The 32k tokenizer is used (over the 8k one) because it's the more standard choice for actually training a model, rather than a comparison point.
+- Downloads 500MB of ClimbMix via `python -m nanochat.dataset -s 500` (the same `-s` flag added for Task 1). Depth 2's default compute-optimal token horizon (`--target-param-data-ratio=12`, printed by `base_train.py` at startup) is small for a model this tiny, so 500MB is generous headroom; increase `-s` and rerun if `base_train.py` ever prints that it needs more tokens than are available.
+- Runs `scripts.base_train --depth=2` with `--window-pattern=L` and `--core-metric-every=-1`: the RTX 5050 this was run on isn't a Hopper GPU, so Flash Attention 3 isn't available and PyTorch's SDPA fallback is used instead — SDPA has no sliding-window support, hence `L` (full-context) instead of nanochat's default alternating pattern — and CORE accuracy isn't a Task 2 deliverable, so it's skipped to avoid downloading the eval bundle and to save time.
+- Finishes with `scripts.base_eval --eval bpb,sample --model-tag d2`, piped to `task2/logs/eval_d2.txt`, for a clean final bpb readout on both splits plus qualitative (unconditioned, no-system-prompt) sample completions — take 5 of the printed unconditioned samples for the report's qualitative-inspection deliverable.
 
 ### Why a training-set bpb curve needs a code change
 
@@ -501,6 +517,16 @@ What each part of this diff does:
 - **`wandb_run.log(...)` calls are unchanged in kind** (still called even under `--run=dummy`, where they're a harmless no-op via nanochat's `DummyWandb`) — the CSV write is purely additive, so this diff doesn't remove or depend on wandb in any way.
 - **File closed at the very end**, after the training loop but before `wandb_run.finish()`/`compute_cleanup()`, so the CSV is always flushed and closed cleanly when the script exits normally.
 
+### Plotting the bpb curves
+
+Once `task2/script.bash` has finished (or partway through a long run — `metrics.csv` is flushed after every logged row), run:
+
+```bash
+python -m task2.plot_bpb
+```
+
+[`task2/plot_bpb.py`](task2/plot_bpb.py) reads `task2/logs/metrics.csv` and saves `task2/bpb_curve.png` with matplotlib — plotting `train_bpb` and `val_bpb` against `step` on the same axes. This is the "training and validation set bits-per-byte curves" deliverable.
+
 ## Quick start
 
 For a fresh Linux or WSL installation, the complete sequence is:
@@ -511,6 +537,8 @@ cd agenticllm-assignment1-group3
 uv sync --extra gpu  # use --extra cpu for CPU-only execution
 source .venv/bin/activate
 bash task1/script.bash
+bash task2/script.bash
+python -m task2.plot_bpb
 ```
 
 Run all commands from the WSL/Linux terminal. If you chose the CPU setup, replace `gpu` with `cpu` in the `uv sync` command.
@@ -521,6 +549,11 @@ Run all commands from the WSL/Linux terminal. If you chose the CPU setup, replac
 task1/
 |-- base_data_climbmix/  # downloaded ClimbMix shards
 `-- script.bash          # dataset download script
+task2/
+|-- base_checkpoints/d2/ # saved model + optimizer checkpoint
+|-- logs/                # metrics.csv (train/val bpb) and eval_d2.txt (final bpb + samples)
+|-- plot_bpb.py          # renders bpb_curve.png from logs/metrics.csv
+`-- script.bash          # dataset download + pre-training + eval driver
 nanochat/                # project source code
 scripts/                 # executable Python scripts
 tests/                   # test suite
