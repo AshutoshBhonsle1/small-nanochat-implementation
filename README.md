@@ -403,6 +403,99 @@ What each part of this diff does:
 - **`bytes_per_token = total_bytes / total_tokens`.** This is the average number of raw bytes each *counted* token decoded to, over the batches just evaluated — exactly the conversion factor described above, computed from real data rather than guessed from the tokenizer's vocabulary in the abstract (which would over/under-weight tokens by how often they actually appear in ClimbMix text).
 - **Return shape only changes when opted in.** With `return_bytes_per_token=True`, the function returns `(bpb, bytes_per_token)` instead of just `bpb`; the `total_bytes == 0` edge case (a degenerate empty batch) is handled the same way, returning `(inf, 0.0)` instead of just `inf`, so callers that unpack a tuple never get a bare float when they least expect it.
 
+### Change 2 of 2: `scripts/base_train.py` — local CSV logging and the approximate `train/bpb`
+
+```diff
+ import os
+ os.environ["PYTORCH_ALLOC_CONF"] = "expandable_segments:True"
+ import gc
++import csv
+ import json
+ ...
+ base_dir = get_base_dir()
++os.makedirs(os.path.join(base_dir, "logs"), exist_ok=True)
++metrics_path = os.path.join(base_dir, "logs", "metrics.csv")
++metrics_file = open(metrics_path, "a", newline="") if master_process else None
++metrics_writer = csv.writer(metrics_file) if master_process else None
++if master_process and metrics_file.tell() == 0:
++    metrics_writer.writerow(["step", "train_loss", "train_bpb", "val_bpb"])
+ output_dirname = args.model_tag if args.model_tag else f"d{args.depth}" # e.g. d12
+ ...
+ if not resuming:
+     step = 0
+     val_bpb = None # will be set if eval_every > 0
++    bytes_per_token = None # will be set once val bpb is first evaluated
+     min_val_bpb = float("inf")
+     smooth_train_loss = 0 # EMA of training loss
+     total_training_time = 0 # total wall-clock time of training
+ else:
+     step = meta_data["step"]
+     loop_state = meta_data["loop_state"]
+     val_bpb = meta_data["val_bpb"]
++    bytes_per_token = loop_state.get("bytes_per_token")
+     min_val_bpb = loop_state["min_val_bpb"]
+     smooth_train_loss = loop_state["smooth_train_loss"]
+     total_training_time = loop_state["total_training_time"]
+ ...
+         with disable_fp8(model):
+-            val_bpb = evaluate_bpb(model, val_loader, eval_steps, token_bytes)
++            val_bpb, bytes_per_token = evaluate_bpb(model, val_loader, eval_steps, token_bytes, return_bytes_per_token=True)
+         print0(f"Step {step:05d} | Validation bpb: {val_bpb:.6f}")
+         if val_bpb < min_val_bpb:
+             min_val_bpb = val_bpb
+         wandb_run.log({
+             "step": step,
+             "total_training_flops": flops_so_far,
+             "total_training_time": total_training_time,
+             "val/bpb": val_bpb,
+         })
++        if master_process:
++            metrics_writer.writerow([step, "", "", val_bpb])
++            metrics_file.flush()
+         model.train()
+ ...
+     if step % 100 == 0:
++        train_bpb = debiased_smooth_loss / (math.log(2) * bytes_per_token) if bytes_per_token else None
+         log_data = {
+             "step": step,
+             "total_training_flops": flops_so_far,
+             "total_training_time": total_training_time,
+             "train/loss": debiased_smooth_loss,
++            "train/bpb": train_bpb,
+             "train/lrm": lrm,
+             "train/dt": dt,
+             "train/tok_per_sec": tok_per_sec,
+             "train/mfu": mfu,
+             "train/epoch": epoch,
+         }
+         wandb_run.log(log_data)
++        if master_process:
++            metrics_writer.writerow([step, debiased_smooth_loss, train_bpb if train_bpb is not None else "", ""])
++            metrics_file.flush()
+ ...
+                 "loop_state": { # all loop state (other than step) so that we can resume training
+                     "min_val_bpb": min_val_bpb,
+                     "smooth_train_loss": smooth_train_loss,
+                     "total_training_time": total_training_time,
++                    "bytes_per_token": bytes_per_token,
+                 },
+ ...
+ # cleanup
++if master_process:
++    metrics_file.close()
+ wandb_run.finish() # wandb run finish
+ compute_cleanup()
+```
+
+What each part of this diff does:
+
+- **`metrics.csv` opened once, guarded by `master_process`.** In distributed (multi-GPU/DDP) training every rank runs this script, but only rank 0 (`master_process`) should own the log file, exactly like nanochat's own convention for checkpoint saving and sampling elsewhere in this file. The header row (`step,train_loss,train_bpb,val_bpb`) is only written the first time the file is created (`metrics_file.tell() == 0` — i.e. it's empty), so re-running or resuming a training run appends to the same file instead of duplicating headers.
+- **`bytes_per_token` threaded through loop state.** It starts as `None` (no val eval has happened yet) and is set every time the periodic validation block runs, using the `return_bytes_per_token=True` flag added to `evaluate_bpb` in Change 1. It's also saved into and restored from the checkpoint's `loop_state`, so resuming a run from a checkpoint keeps a sensible conversion factor immediately, instead of leaving `train/bpb` unset until the next validation pass.
+- **Val-eval block:** unpacks the new `(val_bpb, bytes_per_token)` return and appends a CSV row with just `val_bpb` filled in (the `train_loss`/`train_bpb` columns are left blank for this row, since no training step happened at this exact log point — the two curves are logged on their own independent cadences: `--eval-every` for validation, every 100 steps for training).
+- **Train-loss block:** computes `train_bpb = train_loss_nats / (ln(2) * bytes_per_token)`, using whatever `bytes_per_token` was last measured by validation. This is only computed and logged once `bytes_per_token` is available (i.e., after the first validation pass) — before that, `train/bpb` is `None` and the CSV cell is left blank rather than written as a wrong/undefined number.
+- **`wandb_run.log(...)` calls are unchanged in kind** (still called even under `--run=dummy`, where they're a harmless no-op via nanochat's `DummyWandb`) — the CSV write is purely additive, so this diff doesn't remove or depend on wandb in any way.
+- **File closed at the very end**, after the training loop but before `wandb_run.finish()`/`compute_cleanup()`, so the CSV is always flushed and closed cleanly when the script exits normally.
+
 ## Quick start
 
 For a fresh Linux or WSL installation, the complete sequence is:
