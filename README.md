@@ -337,6 +337,72 @@ The| quick| brown| f|ox| j|umps| over| the| l|az|y| dog|,| to|ken|ization| is| f
 
 The smaller 8k vocabulary has to break common words like "fox", "jumps", and "lazy" into multiple subword pieces, while the 32k vocabulary has room to keep them as single tokens — visibly showing where the extra compression comes from.
 
+## Task 2: Pre-Training
+
+Task 2 pre-trains a `--depth 2` nanochat base model on ClimbMix under `task2/` (mirroring the `task2/`/`task2/script.bash` layout used for Task 1), logging bits-per-byte (bpb) — not raw loss — for both the training and validation sets so the deliverable curves are apples-to-apples across runs. Training happens on a separate machine from where this repo is edited, so all logging is written to a local CSV file instead of relying on a Weights & Biases account or internet access.
+
+### Why a training-set bpb curve needs a code change
+
+Out of the box, nanochat only computes bpb for the **validation** set (`nanochat.loss_eval.evaluate_bpb`, called periodically during training). The **training** curve it logs is the raw mean cross-entropy loss in nats per token, via `model(x, y)`. Nats-per-token and bits-per-byte are not the same unit: bpb additionally weights by how many raw bytes each token decodes to, so it stays comparable across tokenizers/vocab sizes (this is exactly why the assignment asks for bpb instead of loss in the first place).
+
+Recomputing an *exact* bytes-weighted bpb on every training step would mean switching the training forward pass to `loss_reduction='none'` and restructuring the gradient-accumulation/backward logic — a much bigger, riskier change for a metric that's only needed for logging. Instead, we reuse the "bytes per counted token" ratio that `evaluate_bpb` already computes internally during each periodic validation pass, and use it to convert the EMA training loss into an *approximate* training bpb:
+
+```
+train_bpb ≈ train_loss_nats / (ln(2) * bytes_per_token)
+```
+
+`bytes_per_token` is refreshed every time validation runs (`--eval-every` steps) and held constant between refreshes. This is an approximation (a single averaged conversion factor applied to the whole training curve between eval points, rather than an exact per-batch byte count), which is noted here so it can be flagged in the report if relevant.
+
+### Change 1 of 2: `nanochat/loss_eval.py` — let `evaluate_bpb` also report `bytes_per_token`
+
+```diff
+ @torch.no_grad()
+-def evaluate_bpb(model, batches, steps, token_bytes):
++def evaluate_bpb(model, batches, steps, token_bytes, return_bytes_per_token=False):
+     ...
+     # record the losses
+     total_nats = torch.tensor(0.0, dtype=torch.float32, device=model.get_device())
+     total_bytes = torch.tensor(0, dtype=torch.int64, device=model.get_device())
++    total_tokens = torch.tensor(0, dtype=torch.int64, device=model.get_device())
+     batch_iter = iter(batches)
+     for _ in range(steps):
+         ...
+             total_nats += (loss2d * (num_bytes2d > 0)).sum()
+             total_bytes += num_bytes2d.sum()
++            total_tokens += (num_bytes2d > 0).sum()
+         else:
+             ...
+             total_nats += (loss2d * (num_bytes2d > 0)).sum()
+             total_bytes += num_bytes2d.sum()
++            total_tokens += (num_bytes2d > 0).sum()
+     # sum reduce across all ranks
+     world_size = dist.get_world_size() if dist.is_initialized() else 1
+     if world_size > 1:
+         dist.all_reduce(total_nats, op=dist.ReduceOp.SUM)
+         dist.all_reduce(total_bytes, op=dist.ReduceOp.SUM)
++        dist.all_reduce(total_tokens, op=dist.ReduceOp.SUM)
+     # move both to cpu, calculate bpb and return
+     total_nats = total_nats.item()
+     total_bytes = total_bytes.item()
++    total_tokens = total_tokens.item()
+     if total_bytes == 0:
+-        return float('inf')
++        return (float('inf'), 0.0) if return_bytes_per_token else float('inf')
+     bpb = total_nats / (math.log(2) * total_bytes)
++    if return_bytes_per_token:
++        bytes_per_token = total_bytes / total_tokens if total_tokens > 0 else 0.0
++        return bpb, bytes_per_token
+     return bpb
+```
+
+What each part of this diff does:
+
+- **New `return_bytes_per_token` parameter, default `False`.** `evaluate_bpb` is also called from [`scripts/base_eval.py`](scripts/base_eval.py) (final-checkpoint bpb evaluation) without expecting the extra value. Defaulting the new behavior to off means every existing call site keeps working unmodified — only `scripts/base_train.py` opts in.
+- **`total_tokens` accumulator.** The function already computes `num_bytes2d`, a per-token byte count that is `0` for tokens that should be excluded from the metric (special tokens like `<|bos|>`, and ignored/masked targets) and the real byte length otherwise. `(num_bytes2d > 0).sum()` counts how many *included* tokens were seen in this batch — added next to the existing `total_bytes` (sum of byte lengths) and `total_nats` (sum of losses) accumulators, in both the masked and fast code paths, so the count stays consistent with whichever tokens actually contributed to `total_bytes`.
+- **`total_tokens` is all-reduced too**, for the same reason `total_nats`/`total_bytes` already are: under multi-GPU (DDP) training each rank only sees a shard of the batch, so the counts must be summed across ranks before dividing, otherwise a multi-GPU bpb would be computed from only one rank's fraction of the data.
+- **`bytes_per_token = total_bytes / total_tokens`.** This is the average number of raw bytes each *counted* token decoded to, over the batches just evaluated — exactly the conversion factor described above, computed from real data rather than guessed from the tokenizer's vocabulary in the abstract (which would over/under-weight tokens by how often they actually appear in ClimbMix text).
+- **Return shape only changes when opted in.** With `return_bytes_per_token=True`, the function returns `(bpb, bytes_per_token)` instead of just `bpb`; the `total_bytes == 0` edge case (a degenerate empty batch) is handled the same way, returning `(inf, 0.0)` instead of just `inf`, so callers that unpack a tuple never get a bare float when they least expect it.
+
 ## Quick start
 
 For a fresh Linux or WSL installation, the complete sequence is:

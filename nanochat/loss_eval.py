@@ -6,7 +6,7 @@ import torch
 import torch.distributed as dist
 
 @torch.no_grad()
-def evaluate_bpb(model, batches, steps, token_bytes):
+def evaluate_bpb(model, batches, steps, token_bytes, return_bytes_per_token=False):
     """
     Instead of the naive 'mean loss', this function returns the bits per byte (bpb),
     which is a tokenization vocab size-independent metric, meaning you are still comparing
@@ -23,10 +23,15 @@ def evaluate_bpb(model, batches, steps, token_bytes):
     In addition to evaluate_loss, we need the token_bytes tensor:
     It is a 1D tensor of shape (vocab_size,), indicating the number of bytes for
     each token id, or 0 if the token is to not be counted (e.g. special tokens).
+
+    If return_bytes_per_token is True, also returns the average number of bytes
+    per counted token in this batch (used by base_train.py to approximate a
+    training-time bits-per-byte curve from the raw training loss).
     """
     # record the losses
     total_nats = torch.tensor(0.0, dtype=torch.float32, device=model.get_device())
     total_bytes = torch.tensor(0, dtype=torch.int64, device=model.get_device())
+    total_tokens = torch.tensor(0, dtype=torch.int64, device=model.get_device())
     batch_iter = iter(batches)
     for _ in range(steps):
         x, y = next(batch_iter)
@@ -46,20 +51,27 @@ def evaluate_bpb(model, batches, steps, token_bytes):
             )
             total_nats += (loss2d * (num_bytes2d > 0)).sum()
             total_bytes += num_bytes2d.sum()
+            total_tokens += (num_bytes2d > 0).sum()
         else:
             # fast path: no ignored targets, safe to index directly
             num_bytes2d = token_bytes[y]
             total_nats += (loss2d * (num_bytes2d > 0)).sum()
             total_bytes += num_bytes2d.sum()
+            total_tokens += (num_bytes2d > 0).sum()
     # sum reduce across all ranks
     world_size = dist.get_world_size() if dist.is_initialized() else 1
     if world_size > 1:
         dist.all_reduce(total_nats, op=dist.ReduceOp.SUM)
         dist.all_reduce(total_bytes, op=dist.ReduceOp.SUM)
+        dist.all_reduce(total_tokens, op=dist.ReduceOp.SUM)
     # move both to cpu, calculate bpb and return
     total_nats = total_nats.item()
     total_bytes = total_bytes.item()
+    total_tokens = total_tokens.item()
     if total_bytes == 0:
-        return float('inf')
+        return (float('inf'), 0.0) if return_bytes_per_token else float('inf')
     bpb = total_nats / (math.log(2) * total_bytes)
+    if return_bytes_per_token:
+        bytes_per_token = total_bytes / total_tokens if total_tokens > 0 else 0.0
+        return bpb, bytes_per_token
     return bpb
