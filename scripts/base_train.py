@@ -153,15 +153,19 @@ model.init_weights() # 3) All tensors get initialized
 
 # If we are resuming, overwrite the model parameters with those of the checkpoint
 base_dir = get_base_dir()
-os.makedirs(os.path.join(base_dir, "logs"), exist_ok=True)
-metrics_path = os.path.join(base_dir, "logs", "metrics.csv")
-metrics_file = open(metrics_path, "a", newline="") if master_process else None
-metrics_writer = csv.writer(metrics_file) if master_process else None
-if master_process and metrics_file.tell() == 0:
-    metrics_writer.writerow(["step", "train_loss", "train_bpb", "val_bpb"])
 output_dirname = args.model_tag if args.model_tag else f"d{args.depth}" # e.g. d12
 checkpoint_dir = os.path.join(base_dir, "base_checkpoints", output_dirname)
 resuming = args.resume_from_step != -1
+
+# Metrics CSV: fresh runs start a clean file (truncate any previous run's rows),
+# resumed runs append to the existing history instead of wiping it.
+os.makedirs(os.path.join(base_dir, "logs"), exist_ok=True)
+metrics_path = os.path.join(base_dir, "logs", "metrics.csv")
+metrics_file = open(metrics_path, "a" if resuming else "w", newline="") if master_process else None
+metrics_writer = csv.writer(metrics_file) if master_process else None
+if master_process and metrics_file.tell() == 0:
+    metrics_writer.writerow(["step", "train_loss", "train_bpb", "val_bpb"])
+
 if resuming:
     print0(f"Resuming optimization from step {args.resume_from_step}")
     model_data, optimizer_data, meta_data = load_checkpoint(checkpoint_dir, args.resume_from_step, device, load_optimizer=True, rank=ddp_rank)

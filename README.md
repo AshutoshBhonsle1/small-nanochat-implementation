@@ -413,13 +413,18 @@ What each part of this diff does:
  import json
  ...
  base_dir = get_base_dir()
+ output_dirname = args.model_tag if args.model_tag else f"d{args.depth}" # e.g. d12
+ checkpoint_dir = os.path.join(base_dir, "base_checkpoints", output_dirname)
+ resuming = args.resume_from_step != -1
++
++# Metrics CSV: fresh runs start a clean file (truncate any previous run's rows),
++# resumed runs append to the existing history instead of wiping it.
 +os.makedirs(os.path.join(base_dir, "logs"), exist_ok=True)
 +metrics_path = os.path.join(base_dir, "logs", "metrics.csv")
-+metrics_file = open(metrics_path, "a", newline="") if master_process else None
++metrics_file = open(metrics_path, "a" if resuming else "w", newline="") if master_process else None
 +metrics_writer = csv.writer(metrics_file) if master_process else None
 +if master_process and metrics_file.tell() == 0:
 +    metrics_writer.writerow(["step", "train_loss", "train_bpb", "val_bpb"])
- output_dirname = args.model_tag if args.model_tag else f"d{args.depth}" # e.g. d12
  ...
  if not resuming:
      step = 0
@@ -489,7 +494,7 @@ What each part of this diff does:
 
 What each part of this diff does:
 
-- **`metrics.csv` opened once, guarded by `master_process`.** In distributed (multi-GPU/DDP) training every rank runs this script, but only rank 0 (`master_process`) should own the log file, exactly like nanochat's own convention for checkpoint saving and sampling elsewhere in this file. The header row (`step,train_loss,train_bpb,val_bpb`) is only written the first time the file is created (`metrics_file.tell() == 0` — i.e. it's empty), so re-running or resuming a training run appends to the same file instead of duplicating headers.
+- **`metrics.csv` opened once, guarded by `master_process`.** In distributed (multi-GPU/DDP) training every rank runs this script, but only rank 0 (`master_process`) should own the log file, exactly like nanochat's own convention for checkpoint saving and sampling elsewhere in this file. It's opened in truncate mode (`"w"`) for a fresh run — so starting a new training run always begins from a clean `metrics.csv`, with no leftover rows from a previous/different run — and in append mode (`"a"`) when `--resume-from-step` is set, so resuming continues the same curve instead of losing its history. The header row (`step,train_loss,train_bpb,val_bpb`) is written whenever the file comes up empty (`metrics_file.tell() == 0`), which covers both the fresh-run case and a resume whose file didn't already exist.
 - **`bytes_per_token` threaded through loop state.** It starts as `None` (no val eval has happened yet) and is set every time the periodic validation block runs, using the `return_bytes_per_token=True` flag added to `evaluate_bpb` in Change 1. It's also saved into and restored from the checkpoint's `loop_state`, so resuming a run from a checkpoint keeps a sensible conversion factor immediately, instead of leaving `train/bpb` unset until the next validation pass.
 - **Val-eval block:** unpacks the new `(val_bpb, bytes_per_token)` return and appends a CSV row with just `val_bpb` filled in (the `train_loss`/`train_bpb` columns are left blank for this row, since no training step happened at this exact log point — the two curves are logged on their own independent cadences: `--eval-every` for validation, every 100 steps for training).
 - **Train-loss block:** computes `train_bpb = train_loss_nats / (ln(2) * bytes_per_token)`, using whatever `bytes_per_token` was last measured by validation. This is only computed and logged once `bytes_per_token` is available (i.e., after the first validation pass) — before that, `train/bpb` is `None` and the CSV cell is left blank rather than written as a wrong/undefined number.
