@@ -32,9 +32,13 @@ cp -r task1/tokenizer_32k task2/tokenizer
 python -m nanochat.dataset -s 500
 
 # Pretrain the depth-4 base model.
+# --window-pattern=L: SDPA (forced above) has no sliding-window support, so nanochat's own
+# base_train.py warns at startup and recommends --window-pattern=L (full-context attention on
+# every layer) instead of its default alternating pattern when Flash Attention 3 isn't in use.
 python -m scripts.base_train \
     --depth=4 \
-    --eval-every=100
+    --eval-every=100 \
+    --window-pattern=L
 
 # Final evaluation: bpb on both splits plus qualitative (unconditioned) completions from the
 # finished checkpoint, saved to a log file for pulling numbers/quotes into the report.
