@@ -14,3 +14,9 @@ wandb/
 
 # Climbmix Dataset
 base_data_climbmix
+
+# Task 2 generated run artifacts (tokenizer copy, checkpoints, logs, plot)
+task2/tokenizer/
+task2/base_checkpoints/
+task2/logs/
+task2/bpb_curve.png

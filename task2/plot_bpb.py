@@ -39,7 +39,7 @@ def main():
     ax.plot(val_steps, val_bpb, label="val bpb", marker="o")
     ax.set_xlabel("step")
     ax.set_ylabel("bits per byte")
-    ax.set_title("Task 2: depth-2 base model bpb curves")
+    ax.set_title("Task 2: depth-4 base model bpb curves")
     ax.legend()
     fig.tight_layout()
     fig.savefig(OUTPUT_PATH)

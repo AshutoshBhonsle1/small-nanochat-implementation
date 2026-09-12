@@ -7,33 +7,36 @@ source .venv/bin/activate
 # Set the base directory for nanochat (dataset, tokenizer, checkpoints, logs all live under task2/)
 export NANOCHAT_BASE_DIR="./task2"
 
+# Due to a nanochat bug, it can't correctly detect Flash Attention 3 support on RTX 5050 GPUs
+# (https://github.com/Dao-AILab/flash-attention/issues/1987),
+# so we force the SDPA attention instead, via the NANOCHAT_ATTN_IMPL env var added in
+# nanochat/flash_attention.py.
+export NANOCHAT_ATTN_IMPL="sdpa"
+
 # Reuse the 32k-vocabulary tokenizer trained in Task 1 instead of retraining one.
 # base_train.py's get_tokenizer()/get_token_bytes() always look for "<NANOCHAT_BASE_DIR>/tokenizer",
-# so the tokenizer is copied into place under that exact name.
+# so the tokenizer is copied into place under that exact name. Remove any previous copy first:
+# `cp -r src dst` copies src *into* dst (nesting) instead of overwriting it if dst already exists
+# as a directory, which would otherwise pile up stale nested copies on repeated runs.
 if [ ! -d "task1/tokenizer_32k" ]; then
     echo "task1/tokenizer_32k not found. Run task1/script.bash first to train it." >&2
     exit 1
 fi
 mkdir -p task2
+rm -rf task2/tokenizer
 cp -r task1/tokenizer_32k task2/tokenizer
 
-# Download ClimbMix shards. Depth 2's compute-optimal token horizon (target-param-data-ratio=12,
-# the base_train.py default) is small for such a tiny model, so 500MB is generous headroom;
-# base_train.py prints the exact token requirement at startup if this ever needs to be increased.
+# Download ClimbMix shards. base_train.py prints the exact required token count (from
+# --target-param-data-ratio=12, its default) at startup; increase -s and rerun if 500MB
+# turns out not to be enough for this depth's token horizon.
 python -m nanochat.dataset -s 500
 
-# Pretrain the depth-2 base model.
-# --window-pattern=L and --core-metric-every=-1 because this GPU (RTX 5050) has no Flash Attention 3
-# support (not Hopper): SDPA's fallback has no sliding-window support, and CORE accuracy isn't a
-# Task 2 deliverable, so skip downloading/running it to save time.
+# Pretrain the depth-4 base model.
 python -m scripts.base_train \
-    --depth=2 \
-    --window-pattern=L \
-    --core-metric-every=-1 \
-    --eval-every=100 \
-    --save-every=500
+    --depth=4 \
+    --eval-every=50
 
 # Final evaluation: bpb on both splits plus qualitative (unconditioned) completions from the
 # finished checkpoint, saved to a log file for pulling numbers/quotes into the report.
 mkdir -p task2/logs
-python -m scripts.base_eval --eval bpb,sample --model-tag d2 | tee task2/logs/eval_d2.txt
+python -m scripts.base_eval --eval bpb,sample --model-tag d4 | tee task2/logs/eval_d4.txt

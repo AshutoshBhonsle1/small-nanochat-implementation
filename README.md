@@ -339,7 +339,7 @@ The smaller 8k vocabulary has to break common words like "fox", "jumps", and "la
 
 ## Task 2: Pre-Training
 
-Task 2 pre-trains a `--depth 2` nanochat base model on ClimbMix under `task2/` (mirroring the `task2/script.bash` layout used for Task 1), logging bits-per-byte (bpb) — not raw loss — for both the training and validation sets so the deliverable curves are apples-to-apples across runs. Training happens on a separate machine from where this repo is edited, so all logging is written to a local CSV file instead of relying on a Weights & Biases account or internet access.
+Task 2 pre-trains a `--depth 4` nanochat base model on ClimbMix under `task2/` (mirroring the `task2/script.bash` layout used for Task 1), logging bits-per-byte (bpb) — not raw loss — for both the training and validation sets so the deliverable curves are apples-to-apples across runs. Training happens on a separate machine from where this repo is edited, so all logging is written to a local CSV file instead of relying on a Weights & Biases account or internet access.
 
 ### Running Task 2
 
@@ -353,9 +353,10 @@ bash task2/script.bash
 
 - Sets `NANOCHAT_BASE_DIR="./task2"`, so the dataset, tokenizer, checkpoints, and logs all live under `task2/`, separate from Task 1's `task1/`.
 - Copies `task1/tokenizer_32k` to `task2/tokenizer`. `base_train.py` always loads the tokenizer from `<NANOCHAT_BASE_DIR>/tokenizer` (via `nanochat.tokenizer.get_tokenizer()`/`get_token_bytes()`), and Task 1 never saves a tokenizer under that plain name (only `tokenizer_32k`/`tokenizer_8k`), so a copy is needed. The 32k tokenizer is used (over the 8k one) because it's the more standard choice for actually training a model, rather than a comparison point.
-- Downloads 500MB of ClimbMix via `python -m nanochat.dataset -s 500` (the same `-s` flag added for Task 1). Depth 2's default compute-optimal token horizon (`--target-param-data-ratio=12`, printed by `base_train.py` at startup) is small for a model this tiny, so 500MB is generous headroom; increase `-s` and rerun if `base_train.py` ever prints that it needs more tokens than are available.
-- Runs `scripts.base_train --depth=2` with `--window-pattern=L` and `--core-metric-every=-1`: the RTX 5050 this was run on isn't a Hopper GPU, so Flash Attention 3 isn't available and PyTorch's SDPA fallback is used instead — SDPA has no sliding-window support, hence `L` (full-context) instead of nanochat's default alternating pattern — and CORE accuracy isn't a Task 2 deliverable, so it's skipped to avoid downloading the eval bundle and to save time.
-- Finishes with `scripts.base_eval --eval bpb,sample --model-tag d2`, piped to `task2/logs/eval_d2.txt`, for a clean final bpb readout on both splits plus qualitative (unconditioned, no-system-prompt) sample completions — take 5 of the printed unconditioned samples for the report's qualitative-inspection deliverable.
+- Downloads 500MB of ClimbMix via `python -m nanochat.dataset -s 500` (the same `-s` flag added for Task 1). `base_train.py` prints the exact required token count (from `--target-param-data-ratio=12`, its default) at startup; increase `-s` and rerun if 500MB turns out not to be enough for depth 4's token horizon.
+- Sets `NANOCHAT_ATTN_IMPL="sdpa"` to force PyTorch's SDPA attention fallback instead of nanochat's auto-detected Flash Attention 3. On the RTX 5050 Laptop GPU (Blackwell/SM 120) this was run on, nanochat's `has_kernel()` availability check finds a matching community FA3 kernel *package*, but that package has no compiled binary for SM 120, which crashes at runtime instead of falling back gracefully — see Change 3 below.
+- Runs `scripts.base_train --depth=4` with `--core-metric-every=-1` (nanochat's default is every 2000 steps): CORE accuracy isn't a Task 2 deliverable, so it's skipped to avoid downloading a separate eval bundle and to save time. `--eval-every=50` logs validation bpb every 50 steps. `--save-every` and `--window-pattern` are both left at nanochat's own defaults: a checkpoint is only saved at the very end of training either way (`--save-every=-1` is already the default), and the forced SDPA fallback (below) still computes sliding-window attention correctly via an explicit mask even under the default `SSSL` window pattern, just somewhat less efficiently than a specialized windowed kernel — a real but minor cost for a model this tiny.
+- Finishes with `scripts.base_eval --eval bpb,sample --model-tag d4`, piped to `task2/logs/eval_d4.txt`, for a clean final bpb readout on both splits plus qualitative (unconditioned, no-system-prompt) sample completions — take 5 of the printed unconditioned samples for the report's qualitative-inspection deliverable.
 
 ### Why a training-set bpb curve needs a code change
 
@@ -369,7 +370,7 @@ train_bpb ≈ train_loss_nats / (ln(2) * bytes_per_token)
 
 `bytes_per_token` is refreshed every time validation runs (`--eval-every` steps) and held constant between refreshes. This is an approximation (a single averaged conversion factor applied to the whole training curve between eval points, rather than an exact per-batch byte count), which is noted here so it can be flagged in the report if relevant.
 
-### Change 1 of 2: `nanochat/loss_eval.py` — let `evaluate_bpb` also report `bytes_per_token`
+### Change 1 of 3: `nanochat/loss_eval.py` — let `evaluate_bpb` also report `bytes_per_token`
 
 ```diff
  @torch.no_grad()
@@ -419,7 +420,7 @@ What each part of this diff does:
 - **`bytes_per_token = total_bytes / total_tokens`.** This is the average number of raw bytes each *counted* token decoded to, over the batches just evaluated — exactly the conversion factor described above, computed from real data rather than guessed from the tokenizer's vocabulary in the abstract (which would over/under-weight tokens by how often they actually appear in ClimbMix text).
 - **Return shape only changes when opted in.** With `return_bytes_per_token=True`, the function returns `(bpb, bytes_per_token)` instead of just `bpb`; the `total_bytes == 0` edge case (a degenerate empty batch) is handled the same way, returning `(inf, 0.0)` instead of just `inf`, so callers that unpack a tuple never get a bare float when they least expect it.
 
-### Change 2 of 2: `scripts/base_train.py` — local CSV logging and the approximate `train/bpb`
+### Change 2 of 3: `scripts/base_train.py` — local CSV logging and the approximate `train/bpb`
 
 ```diff
  import os
@@ -517,6 +518,28 @@ What each part of this diff does:
 - **`wandb_run.log(...)` calls are unchanged in kind** (still called even under `--run=dummy`, where they're a harmless no-op via nanochat's `DummyWandb`) — the CSV write is purely additive, so this diff doesn't remove or depend on wandb in any way.
 - **File closed at the very end**, after the training loop but before `wandb_run.finish()`/`compute_cleanup()`, so the CSV is always flushed and closed cleanly when the script exits normally.
 
+### Change 3 of 3: `nanochat/flash_attention.py` — let `NANOCHAT_ATTN_IMPL` force the SDPA fallback
+
+nanochat auto-detects Flash Attention 3 by checking whether a matching *kernel package* can be downloaded for the GPU's compute-capability major version (`kernels.has_kernel(...)`), then trusts that package to actually run. On an RTX 5050 Laptop GPU (Blackwell, SM 120), `has_kernel("kernels-community/flash-attn3")` returns `True` — a package exists — but that package has no compiled binary for SM 120 specifically, so the very first attention call crashes with `CUDA error: no kernel image is available for execution on the device` instead of nanochat falling back to its SDPA implementation the way it does on genuinely unsupported hardware (e.g. CPU/MPS). This is a real gap in nanochat's detection logic, not a training bug.
+
+There was already an `_override_impl` variable in the file for exactly this kind of situation, but nothing ever set it to anything other than `None` — no CLI flag or env var wired it up. The fix makes it configurable:
+
+```diff
++import os
+ import torch
+ import torch.nn.functional as F
+ ...
+-# Override for testing: set to 'fa3', 'sdpa', or None (auto)
+-_override_impl = None
++# Override for testing, and for GPUs where has_kernel() finds a matching kernel package but that
++# package has no compiled binary for this specific compute capability (e.g. Blackwell/sm120 consumer
++# GPUs with the community FA3 kernel), which otherwise crashes at runtime instead of falling back.
++# Set NANOCHAT_ATTN_IMPL=fa3 or NANOCHAT_ATTN_IMPL=sdpa to force a choice; unset = auto-detect.
++_override_impl = os.environ.get("NANOCHAT_ATTN_IMPL")
+```
+
+`task2/script.bash` sets `export NANOCHAT_ATTN_IMPL="sdpa"` before running `scripts.base_train`/`scripts.base_eval`, which makes `_resolve_use_fa3()` return `False` unconditionally — every `flash_attn_func`/`flash_attn_with_kvcache` call then takes the `SDPA fallback` branch (`nanochat/flash_attention.py`'s existing `if USE_FA3: ... ` checks) and never touches the broken kernel package at all.
+
 ### Plotting the bpb curves
 
 Once `task2/script.bash` has finished (or partway through a long run — `metrics.csv` is flushed after every logged row), run:
@@ -550,8 +573,8 @@ task1/
 |-- base_data_climbmix/  # downloaded ClimbMix shards
 `-- script.bash          # dataset download script
 task2/
-|-- base_checkpoints/d2/ # saved model + optimizer checkpoint
-|-- logs/                # metrics.csv (train/val bpb) and eval_d2.txt (final bpb + samples)
+|-- base_checkpoints/d4/ # saved model + optimizer checkpoint
+|-- logs/                # metrics.csv (train/val bpb) and eval_d4.txt (final bpb + samples)
 |-- plot_bpb.py          # renders bpb_curve.png from logs/metrics.csv
 `-- script.bash          # dataset download + pre-training + eval driver
 nanochat/                # project source code
