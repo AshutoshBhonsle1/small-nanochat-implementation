@@ -341,6 +341,7 @@ if scaler is not None:
 dataloader_resume_state_dict = None if not resuming else meta_data["dataloader_state_dict"]
 train_loader = tokenizing_distributed_data_loader_with_state_bos_bestfit(tokenizer, args.device_batch_size, args.max_seq_len, split="train", device=device, resume_state_dict=dataloader_resume_state_dict)
 build_val_loader = lambda: tokenizing_distributed_data_loader_bos_bestfit(tokenizer, args.device_batch_size, args.max_seq_len, split="val", device=device)
+build_train_bpb_loader = lambda: tokenizing_distributed_data_loader_bos_bestfit(tokenizer, args.device_batch_size, args.max_seq_len, split="train", device=device)
 x, y, dataloader_state_dict = next(train_loader) # kick off load of the very first batch of data
 
 # -----------------------------------------------------------------------------
@@ -403,7 +404,6 @@ def get_weight_decay(it):
 if not resuming:
     step = 0
     val_bpb = None # will be set if eval_every > 0
-    bytes_per_token = None # will be set once val bpb is first evaluated
     min_val_bpb = float("inf")
     smooth_train_loss = 0 # EMA of training loss
     total_training_time = 0 # total wall-clock time of training
@@ -411,7 +411,6 @@ else:
     step = meta_data["step"]
     loop_state = meta_data["loop_state"]
     val_bpb = meta_data["val_bpb"]
-    bytes_per_token = loop_state.get("bytes_per_token")
     min_val_bpb = loop_state["min_val_bpb"]
     smooth_train_loss = loop_state["smooth_train_loss"]
     total_training_time = loop_state["total_training_time"]
@@ -434,10 +433,12 @@ while True:
     if args.eval_every > 0 and (last_step or step % args.eval_every == 0):
         model.eval()
         val_loader = build_val_loader()
+        train_bpb_loader = build_train_bpb_loader()
         eval_steps = args.eval_tokens // (args.device_batch_size * args.max_seq_len * ddp_world_size)
         with disable_fp8(model):
-            val_bpb, bytes_per_token = evaluate_bpb(model, val_loader, eval_steps, token_bytes, return_bytes_per_token=True)
-        print0(f"Step {step:05d} | Validation bpb: {val_bpb:.6f}")
+            val_bpb = evaluate_bpb(model, val_loader, eval_steps, token_bytes)
+            train_bpb = evaluate_bpb(model, train_bpb_loader, eval_steps, token_bytes)
+        print0(f"Step {step:05d} | Validation bpb: {val_bpb:.6f} | Train bpb: {train_bpb:.6f}")
         if val_bpb < min_val_bpb:
             min_val_bpb = val_bpb
         wandb_run.log({
@@ -445,9 +446,10 @@ while True:
             "total_training_flops": flops_so_far,
             "total_training_time": total_training_time,
             "val/bpb": val_bpb,
+            "train/bpb": train_bpb,
         })
         if master_process:
-            metrics_writer.writerow([step, "", "", val_bpb])
+            metrics_writer.writerow([step, "", train_bpb, val_bpb])
             metrics_file.flush()
         model.train()
 
@@ -509,7 +511,6 @@ while True:
                     "min_val_bpb": min_val_bpb,
                     "smooth_train_loss": smooth_train_loss,
                     "total_training_time": total_training_time,
-                    "bytes_per_token": bytes_per_token,
                 },
             },
             rank=ddp_rank,
@@ -583,13 +584,11 @@ while True:
     epoch = f"{dataloader_state_dict['epoch']} pq: {dataloader_state_dict['pq_idx']} rg: {dataloader_state_dict['rg_idx']}"
     print0(f"step {step:05d}/{num_iterations:05d} ({pct_done:.2f}%) | loss: {debiased_smooth_loss:.6f} | lrm: {lrm:.2f} | dt: {dt * 1000:.2f}ms | tok/sec: {tok_per_sec:,} | bf16_mfu: {mfu:.2f} | epoch: {epoch} | total time: {total_training_time/60:.2f}m{eta_str}")
     if step % 100 == 0:
-        train_bpb = debiased_smooth_loss / (math.log(2) * bytes_per_token) if bytes_per_token else None
         log_data = {
             "step": step,
             "total_training_flops": flops_so_far,
             "total_training_time": total_training_time,
             "train/loss": debiased_smooth_loss,
-            "train/bpb": train_bpb,
             "train/lrm": lrm,
             "train/dt": dt,
             "train/tok_per_sec": tok_per_sec,
@@ -598,7 +597,7 @@ while True:
         }
         wandb_run.log(log_data)
         if master_process:
-            metrics_writer.writerow([step, debiased_smooth_loss, train_bpb if train_bpb is not None else "", ""])
+            metrics_writer.writerow([step, debiased_smooth_loss, "", ""])
             metrics_file.flush()
 
     # state update

@@ -35,7 +35,7 @@ def main():
     train_steps, train_bpb, val_steps, val_bpb = load_curves(METRICS_PATH)
 
     fig, ax = plt.subplots(figsize=(8, 5))
-    ax.plot(train_steps, train_bpb, label="train bpb (approx.)")
+    ax.plot(train_steps, train_bpb, label="train bpb", marker="o")
     ax.plot(val_steps, val_bpb, label="val bpb", marker="o")
     ax.set_xlabel("step")
     ax.set_ylabel("bits per byte")

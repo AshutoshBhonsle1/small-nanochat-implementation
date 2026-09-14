@@ -354,65 +354,15 @@ bash task2/script.bash
 - Sets `NANOCHAT_BASE_DIR="./task2"`, so the dataset, tokenizer, checkpoints, and logs all live under `task2/`, separate from Task 1's `task1/`.
 - Copies `task1/tokenizer_32k` to `task2/tokenizer`. `base_train.py` always loads the tokenizer from `<NANOCHAT_BASE_DIR>/tokenizer` (via `nanochat.tokenizer.get_tokenizer()`/`get_token_bytes()`), and Task 1 never saves a tokenizer under that plain name (only `tokenizer_32k`/`tokenizer_8k`), so a copy is needed. The 32k tokenizer is used (over the 8k one) because it's the more standard choice for actually training a model, rather than a comparison point.
 - Downloads 500MB of ClimbMix via `python -m nanochat.dataset -s 500` (the same `-s` flag added for Task 1). `base_train.py` prints the exact required token count (from `--target-param-data-ratio=12`, its default) at startup; increase `-s` and rerun if 500MB turns out not to be enough for depth 4's token horizon.
-- Sets `NANOCHAT_ATTN_IMPL="sdpa"` to force PyTorch's SDPA attention fallback instead of nanochat's auto-detected Flash Attention 3, which crashes on Blackwell/SM 120 GPUs like the RTX 5050 Laptop this was run on ([Dao-AILab/flash-attention#1987](https://github.com/Dao-AILab/flash-attention/issues/1987)) — see Change 3 below.
-- Runs `scripts.base_train --depth=4 --eval-every=100 --window-pattern=L`. `--eval-every=100` logs validation bpb every 100 steps — matching nanochat's own hardcoded train-loss logging cadence (also every 100 steps), so both land on the same rows in `metrics.csv`. `--window-pattern=L` follows `base_train.py`'s own startup recommendation: SDPA (forced above) has no sliding-window support, so nanochat's default alternating pattern (`SSSL`) would tank GPU utilization — `base_train.py` prints exactly this warning and suggests `L` whenever Flash Attention 3 isn't in use. Everything else is left at nanochat's own defaults — including `--save-every` (checkpoint only at the very end).
+- Sets `NANOCHAT_ATTN_IMPL="sdpa"` to force PyTorch's SDPA attention fallback instead of nanochat's auto-detected Flash Attention 3, which crashes on Blackwell/SM 120 GPUs like the RTX 5050 Laptop this was run on ([Dao-AILab/flash-attention#1987](https://github.com/Dao-AILab/flash-attention/issues/1987)) — see Change 2 below.
+- Runs `scripts.base_train --depth=4 --eval-every=100 --window-pattern=L`. `--eval-every=100` controls how often `base_train.py` evaluates bpb (every 100 steps); Change 1 below makes it evaluate the train split at the same cadence, right alongside the val split it already evaluates there. `--window-pattern=L` follows `base_train.py`'s own startup recommendation: SDPA (forced above) has no sliding-window support, so nanochat's default alternating pattern (`SSSL`) would tank GPU utilization — `base_train.py` prints exactly this warning and suggests `L` whenever Flash Attention 3 isn't in use. Everything else is left at nanochat's own defaults — including `--save-every` (checkpoint only at the very end).
 - Finishes with `scripts.base_eval --eval bpb,sample --model-tag d4`, piped to `task2/logs/eval_d4.txt`, for a clean final bpb readout on both splits plus qualitative (unconditioned, no-system-prompt) sample completions — take 5 of the printed unconditioned samples for the report's qualitative-inspection deliverable.
 
 ### Why a training-set bpb curve needs a code change
 
-nanochat only computes bpb for validation; the training curve it logs is plain loss (nats/token), a different unit. To get an approximate training bpb without touching the training forward pass itself, we convert it using the bytes-per-token ratio each validation pass already measures:
+nanochat's `base_train.py` only ever evaluates bpb (via `nanochat.loss_eval.evaluate_bpb`) on the val split; the training curve it logs is plain EMA'd loss (nats/token), a different unit. `evaluate_bpb` itself is generic — it just evaluates the model on whatever batches it's handed — and `scripts/base_eval.py` already calls it on both `"train"` and `"val"` loaders (see [`scripts/base_eval.py`](scripts/base_eval.py)). So getting a real train bpb during training needs no new formula and no edit to `nanochat/`: it's the same unmodified `evaluate_bpb` call, just also pointed at a train-split loader, run at the same cadence as the val bpb eval nanochat already does.
 
-```
-train_bpb ≈ train_loss_nats / (ln(2) * bytes_per_token)
-```
-
-`bytes_per_token` refreshes every `--eval-every` steps and is held constant in between, so this is an approximation, not an exact per-batch value — worth flagging in the report if relevant.
-
-### Change 1 of 3: `nanochat/loss_eval.py` — let `evaluate_bpb` also report `bytes_per_token`
-
-```diff
- @torch.no_grad()
--def evaluate_bpb(model, batches, steps, token_bytes):
-+def evaluate_bpb(model, batches, steps, token_bytes, return_bytes_per_token=False):
-     ...
-     # record the losses
-     total_nats = torch.tensor(0.0, dtype=torch.float32, device=model.get_device())
-     total_bytes = torch.tensor(0, dtype=torch.int64, device=model.get_device())
-+    total_tokens = torch.tensor(0, dtype=torch.int64, device=model.get_device())
-     batch_iter = iter(batches)
-     for _ in range(steps):
-         ...
-             total_nats += (loss2d * (num_bytes2d > 0)).sum()
-             total_bytes += num_bytes2d.sum()
-+            total_tokens += (num_bytes2d > 0).sum()
-         else:
-             ...
-             total_nats += (loss2d * (num_bytes2d > 0)).sum()
-             total_bytes += num_bytes2d.sum()
-+            total_tokens += (num_bytes2d > 0).sum()
-     # sum reduce across all ranks
-     world_size = dist.get_world_size() if dist.is_initialized() else 1
-     if world_size > 1:
-         dist.all_reduce(total_nats, op=dist.ReduceOp.SUM)
-         dist.all_reduce(total_bytes, op=dist.ReduceOp.SUM)
-+        dist.all_reduce(total_tokens, op=dist.ReduceOp.SUM)
-     # move both to cpu, calculate bpb and return
-     total_nats = total_nats.item()
-     total_bytes = total_bytes.item()
-+    total_tokens = total_tokens.item()
-     if total_bytes == 0:
--        return float('inf')
-+        return (float('inf'), 0.0) if return_bytes_per_token else float('inf')
-     bpb = total_nats / (math.log(2) * total_bytes)
-+    if return_bytes_per_token:
-+        bytes_per_token = total_bytes / total_tokens if total_tokens > 0 else 0.0
-+        return bpb, bytes_per_token
-     return bpb
-```
-
-the function already tracks `total_nats` (loss) and `total_bytes` for computing bpb, so we add one more counter, `total_tokens` — how many real tokens those bytes came from — updated and reduced across GPUs alongside the other two. `(num_bytes2d > 0).sum()` just counts how many tokens in the batch weren't excluded (special/masked tokens have `num_bytes2d == 0`), matching the same tokens `total_bytes`/`total_nats` already sum over. Dividing `total_bytes / total_tokens` gives `bytes_per_token`, measured from the actual batches rather than guessed from the tokenizer's vocabulary. It's only returned when `return_bytes_per_token=True` is passed, so `scripts/base_eval.py`'s existing calls (which don't expect it) are unaffected — only `scripts/base_train.py` opts in.
-
-### Change 2 of 3: `scripts/base_train.py` — local CSV logging and the approximate `train/bpb`
+### Change 1 of 2: `scripts/base_train.py` — evaluate train bpb alongside val bpb, plus local CSV logging
 
 ```diff
  import os
@@ -435,26 +385,20 @@ the function already tracks `total_nats` (loss) and `total_bytes` for computing 
 +if master_process and metrics_file.tell() == 0:
 +    metrics_writer.writerow(["step", "train_loss", "train_bpb", "val_bpb"])
  ...
- if not resuming:
-     step = 0
-     val_bpb = None # will be set if eval_every > 0
-+    bytes_per_token = None # will be set once val bpb is first evaluated
-     min_val_bpb = float("inf")
-     smooth_train_loss = 0 # EMA of training loss
-     total_training_time = 0 # total wall-clock time of training
- else:
-     step = meta_data["step"]
-     loop_state = meta_data["loop_state"]
-     val_bpb = meta_data["val_bpb"]
-+    bytes_per_token = loop_state.get("bytes_per_token")
-     min_val_bpb = loop_state["min_val_bpb"]
-     smooth_train_loss = loop_state["smooth_train_loss"]
-     total_training_time = loop_state["total_training_time"]
+ train_loader = tokenizing_distributed_data_loader_with_state_bos_bestfit(tokenizer, args.device_batch_size, args.max_seq_len, split="train", device=device, resume_state_dict=dataloader_resume_state_dict)
+ build_val_loader = lambda: tokenizing_distributed_data_loader_bos_bestfit(tokenizer, args.device_batch_size, args.max_seq_len, split="val", device=device)
++build_train_bpb_loader = lambda: tokenizing_distributed_data_loader_bos_bestfit(tokenizer, args.device_batch_size, args.max_seq_len, split="train", device=device)
  ...
+         model.eval()
+         val_loader = build_val_loader()
++        train_bpb_loader = build_train_bpb_loader()
+         eval_steps = args.eval_tokens // (args.device_batch_size * args.max_seq_len * ddp_world_size)
          with disable_fp8(model):
 -            val_bpb = evaluate_bpb(model, val_loader, eval_steps, token_bytes)
-+            val_bpb, bytes_per_token = evaluate_bpb(model, val_loader, eval_steps, token_bytes, return_bytes_per_token=True)
-         print0(f"Step {step:05d} | Validation bpb: {val_bpb:.6f}")
+-        print0(f"Step {step:05d} | Validation bpb: {val_bpb:.6f}")
++            val_bpb = evaluate_bpb(model, val_loader, eval_steps, token_bytes)
++            train_bpb = evaluate_bpb(model, train_bpb_loader, eval_steps, token_bytes)
++        print0(f"Step {step:05d} | Validation bpb: {val_bpb:.6f} | Train bpb: {train_bpb:.6f}")
          if val_bpb < min_val_bpb:
              min_val_bpb = val_bpb
          wandb_run.log({
@@ -462,20 +406,19 @@ the function already tracks `total_nats` (loss) and `total_bytes` for computing 
              "total_training_flops": flops_so_far,
              "total_training_time": total_training_time,
              "val/bpb": val_bpb,
++            "train/bpb": train_bpb,
          })
 +        if master_process:
-+            metrics_writer.writerow([step, "", "", val_bpb])
++            metrics_writer.writerow([step, "", train_bpb, val_bpb])
 +            metrics_file.flush()
          model.train()
  ...
      if step % 100 == 0:
-+        train_bpb = debiased_smooth_loss / (math.log(2) * bytes_per_token) if bytes_per_token else None
          log_data = {
              "step": step,
              "total_training_flops": flops_so_far,
              "total_training_time": total_training_time,
              "train/loss": debiased_smooth_loss,
-+            "train/bpb": train_bpb,
              "train/lrm": lrm,
              "train/dt": dt,
              "train/tok_per_sec": tok_per_sec,
@@ -484,15 +427,8 @@ the function already tracks `total_nats` (loss) and `total_bytes` for computing 
          }
          wandb_run.log(log_data)
 +        if master_process:
-+            metrics_writer.writerow([step, debiased_smooth_loss, train_bpb if train_bpb is not None else "", ""])
++            metrics_writer.writerow([step, debiased_smooth_loss, "", ""])
 +            metrics_file.flush()
- ...
-                 "loop_state": { # all loop state (other than step) so that we can resume training
-                     "min_val_bpb": min_val_bpb,
-                     "smooth_train_loss": smooth_train_loss,
-                     "total_training_time": total_training_time,
-+                    "bytes_per_token": bytes_per_token,
-                 },
  ...
  # cleanup
 +if master_process:
@@ -501,9 +437,9 @@ the function already tracks `total_nats` (loss) and `total_bytes` for computing 
  compute_cleanup()
 ```
 
-`metrics.csv` is opened once (only by `master_process`, the same convention nanochat already uses for checkpoint saving): truncated (`"w"`) on a fresh run so each new model starts clean, appended (`"a"`) on resume so history isn't lost, with a header written whenever the file comes up empty. `bytes_per_token` starts as `None` and gets set each time validation runs (via Change 1's `return_bytes_per_token=True`), and is saved into/restored from the checkpoint's `loop_state` so a resume doesn't lose it. The val-eval block writes a CSV row with just `val_bpb`; the train-loss block computes `train_bpb` from the last known `bytes_per_token` and writes a row with just that (leaving it blank until the first validation pass has actually set `bytes_per_token`) — the two rows stay separate because train and val log on independent cadences. `wandb_run.log(...)` is untouched (still a no-op under `--run=dummy`); the CSV write is purely additive. The file is closed at the very end, after the training loop but before cleanup.
+`build_train_bpb_loader` mirrors nanochat's own `build_val_loader` exactly — same unmodified `tokenizing_distributed_data_loader_bos_bestfit`, just `split="train"` instead of `"val"` — and is a separate loader instance from `train_loader`, so evaluating bpb on it never consumes or perturbs the actual training data stream. Both bpb evaluations now happen together, under the same `model.eval()` / `disable_fp8` / `model.train()` guard, at the existing `--eval-every` cadence — no new cadence, no approximation, no state (like a `bytes_per_token` ratio) to thread through checkpoint resume. `metrics.csv` is opened once (only by `master_process`, the same convention nanochat already uses for checkpoint saving): truncated (`"w"`) on a fresh run so each new model starts clean, appended (`"a"`) on resume so history isn't lost, with a header written whenever the file comes up empty. The eval-cadence block now writes one CSV row per eval containing both `train_bpb` and `val_bpb` together; the separate per-100-steps block still logs the free EMA `train_loss` for a denser wandb/CSV loss curve, but no longer derives a bpb number from it. `wandb_run.log(...)` is untouched (still a no-op under `--run=dummy`); the CSV write is purely additive. The file is closed at the very end, after the training loop but before cleanup.
 
-### Change 3 of 3: `nanochat/flash_attention.py` — let `NANOCHAT_ATTN_IMPL` force the SDPA fallback
+### Change 2 of 2: `nanochat/flash_attention.py` — let `NANOCHAT_ATTN_IMPL` force the SDPA fallback
 
 nanochat's FA3 auto-detection wrongly reports Flash Attention 3 as available on Blackwell/SM 120 GPUs (it checks that a kernel *package* exists, not that it has a binary for this specific chip), which crashes the first attention call instead of falling back — see [Dao-AILab/flash-attention#1987](https://github.com/Dao-AILab/flash-attention/issues/1987). There was already an unused `_override_impl` variable meant for exactly this kind of override, so we wire it up to an env var:
 
