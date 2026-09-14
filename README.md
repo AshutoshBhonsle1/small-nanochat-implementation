@@ -383,7 +383,7 @@ nanochat's `base_train.py` only ever evaluates bpb (via `nanochat.loss_eval.eval
 +metrics_file = open(metrics_path, "a" if resuming else "w", newline="") if master_process else None
 +metrics_writer = csv.writer(metrics_file) if master_process else None
 +if master_process and metrics_file.tell() == 0:
-+    metrics_writer.writerow(["step", "train_loss", "train_bpb", "val_bpb"])
++    metrics_writer.writerow(["step", "total_training_flops", "total_training_time", "train_loss", "train_bpb", "val_bpb"])
  ...
  train_loader = tokenizing_distributed_data_loader_with_state_bos_bestfit(tokenizer, args.device_batch_size, args.max_seq_len, split="train", device=device, resume_state_dict=dataloader_resume_state_dict)
  build_val_loader = lambda: tokenizing_distributed_data_loader_bos_bestfit(tokenizer, args.device_batch_size, args.max_seq_len, split="val", device=device)
@@ -409,7 +409,7 @@ nanochat's `base_train.py` only ever evaluates bpb (via `nanochat.loss_eval.eval
 +            "train/bpb": train_bpb,
          })
 +        if master_process:
-+            metrics_writer.writerow([step, "", train_bpb, val_bpb])
++            metrics_writer.writerow([step, flops_so_far, total_training_time, "", train_bpb, val_bpb])
 +            metrics_file.flush()
          model.train()
  ...
@@ -427,7 +427,7 @@ nanochat's `base_train.py` only ever evaluates bpb (via `nanochat.loss_eval.eval
          }
          wandb_run.log(log_data)
 +        if master_process:
-+            metrics_writer.writerow([step, debiased_smooth_loss, "", ""])
++            metrics_writer.writerow([step, flops_so_far, total_training_time, debiased_smooth_loss, "", ""])
 +            metrics_file.flush()
  ...
  # cleanup
@@ -437,7 +437,7 @@ nanochat's `base_train.py` only ever evaluates bpb (via `nanochat.loss_eval.eval
  compute_cleanup()
 ```
 
-`build_train_bpb_loader` mirrors nanochat's own `build_val_loader` exactly — same unmodified `tokenizing_distributed_data_loader_bos_bestfit`, just `split="train"` instead of `"val"` — and is a separate loader instance from `train_loader`, so evaluating bpb on it never consumes or perturbs the actual training data stream. Both bpb evaluations now happen together, under the same `model.eval()` / `disable_fp8` / `model.train()` guard, at the existing `--eval-every` cadence — no new cadence, no approximation, no state (like a `bytes_per_token` ratio) to thread through checkpoint resume. `metrics.csv` is opened once (only by `master_process`, the same convention nanochat already uses for checkpoint saving): truncated (`"w"`) on a fresh run so each new model starts clean, appended (`"a"`) on resume so history isn't lost, with a header written whenever the file comes up empty. The eval-cadence block now writes one CSV row per eval containing both `train_bpb` and `val_bpb` together; the separate per-100-steps block still logs the free EMA `train_loss` for a denser wandb/CSV loss curve, but no longer derives a bpb number from it. `wandb_run.log(...)` is untouched (still a no-op under `--run=dummy`); the CSV write is purely additive. The file is closed at the very end, after the training loop but before cleanup.
+`build_train_bpb_loader` mirrors nanochat's own `build_val_loader` exactly — same unmodified `tokenizing_distributed_data_loader_bos_bestfit`, just `split="train"` instead of `"val"` — and is a separate loader instance from `train_loader`, so evaluating bpb on it never consumes or perturbs the actual training data stream. Both bpb evaluations now happen together, under the same `model.eval()` / `disable_fp8` / `model.train()` guard, at the existing `--eval-every` cadence — no new cadence, no approximation, no state (like a `bytes_per_token` ratio) to thread through checkpoint resume. `metrics.csv` is opened once (only by `master_process`, the same convention nanochat already uses for checkpoint saving): truncated (`"w"`) on a fresh run so each new model starts clean, appended (`"a"`) on resume so history isn't lost, with a header written whenever the file comes up empty. The eval-cadence block now writes one CSV row per eval containing both `train_bpb` and `val_bpb` together; the separate per-100-steps block still logs the free EMA `train_loss` for a denser wandb/CSV loss curve, but no longer derives a bpb number from it. Both rows also carry `total_training_flops` and `total_training_time`, mirroring the fields already sent to `wandb_run.log(...)` in each block, so the CSV isn't missing anything wandb gets. `wandb_run.log(...)` itself is untouched (still a no-op under `--run=dummy`); the CSV write is purely additive. The file is closed at the very end, after the training loop but before cleanup.
 
 ### Change 2 of 2: `nanochat/flash_attention.py` — let `NANOCHAT_ATTN_IMPL` force the SDPA fallback
 
