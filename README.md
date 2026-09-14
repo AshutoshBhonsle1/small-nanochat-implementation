@@ -95,13 +95,13 @@ The code diff is as follows:
      parser.add_argument("-w", "--num-workers", type=int, default=4, help="Number of parallel download workers (default: 4)")
 +    parser.add_argument("-s", "--size-dataset", type=int, default=0, help="Size of the dataset in MB that you want to download.")
      args = parser.parse_args()
- 
+
      # Prepare the output directory
      os.makedirs(DATA_DIR, exist_ok=True)
- 
+
      # The way this works is that the user specifies the number of train shards to download via the -n flag.
      # In addition to that, the validation shard is *always* downloaded and is pinned to be the last shard.
- 
+
 -    num_train_shards = MAX_SHARD if args.num_files == -1 else min(args.num_files, MAX_SHARD)
 +    if args.size_dataset == 0:
 +        num_train_shards = MAX_SHARD if args.num_files == -1 else min(args.num_files, MAX_SHARD)
@@ -114,7 +114,7 @@ The code diff is as follows:
 +        size_shard_mb = size_shard_bytes / 1000000
 +        #calculate the number of required shards
 +        num_train_shards = math.ceil(args.size_dataset/size_shard_mb)
- 
+
      ids_to_download = list(range(num_train_shards))
      ids_to_download.append(MAX_SHARD) # always download the validation shard
 ```
@@ -441,7 +441,7 @@ nanochat's `base_train.py` only ever evaluates bpb (via `nanochat.loss_eval.eval
 
 ### Change 2 of 2: `nanochat/flash_attention.py` — let `NANOCHAT_ATTN_IMPL` force the SDPA fallback
 
-nanochat's FA3 auto-detection wrongly reports Flash Attention 3 as available on Blackwell/SM 120 GPUs (it checks that a kernel *package* exists, not that it has a binary for this specific chip), which crashes the first attention call instead of falling back — see [Dao-AILab/flash-attention#1987](https://github.com/Dao-AILab/flash-attention/issues/1987). There was already an unused `_override_impl` variable meant for exactly this kind of override, so we wire it up to an env var:
+nanochat's FA3 auto-detection wrongly reports Flash Attention 3 as available on Blackwell/SM 120 GPUs (it checks that a kernel _package_ exists, not that it has a binary for this specific chip), which crashes the first attention call instead of falling back — see [Dao-AILab/flash-attention#1987](https://github.com/Dao-AILab/flash-attention/issues/1987). There was already an unused `_override_impl` variable meant for exactly this kind of override, so we wire it up to an env var:
 
 ```diff
 +import os
