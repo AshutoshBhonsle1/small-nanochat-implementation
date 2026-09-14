@@ -164,7 +164,7 @@ metrics_path = os.path.join(base_dir, "logs", "metrics.csv")
 metrics_file = open(metrics_path, "a" if resuming else "w", newline="") if master_process else None
 metrics_writer = csv.writer(metrics_file) if master_process else None
 if master_process and metrics_file.tell() == 0:
-    metrics_writer.writerow(["step", "train_loss", "train_bpb", "val_bpb"])
+    metrics_writer.writerow(["step", "total_training_flops", "total_training_time", "train_loss", "train_bpb", "val_bpb"])
 
 if resuming:
     print0(f"Resuming optimization from step {args.resume_from_step}")
@@ -429,7 +429,7 @@ while True:
     last_step = step == num_iterations # loop runs num_iterations+1 times so that we can eval/save at the end
     flops_so_far = num_flops_per_token * total_batch_size * step
 
-    # once in a while: evaluate the val bpb (all ranks participate)
+    # once in a while: evaluate the val and train bpb (all ranks participate)
     if args.eval_every > 0 and (last_step or step % args.eval_every == 0):
         model.eval()
         val_loader = build_val_loader()
@@ -449,7 +449,7 @@ while True:
             "train/bpb": train_bpb,
         })
         if master_process:
-            metrics_writer.writerow([step, "", train_bpb, val_bpb])
+            metrics_writer.writerow([step, flops_so_far, total_training_time, "", train_bpb, val_bpb])
             metrics_file.flush()
         model.train()
 
@@ -597,7 +597,7 @@ while True:
         }
         wandb_run.log(log_data)
         if master_process:
-            metrics_writer.writerow([step, debiased_smooth_loss, "", ""])
+            metrics_writer.writerow([step, flops_so_far, total_training_time, debiased_smooth_loss, "", ""])
             metrics_file.flush()
 
     # state update
