@@ -389,6 +389,14 @@ nanochat's `base_train.py` only ever evaluates bpb (via `nanochat.loss_eval.eval
  build_val_loader = lambda: tokenizing_distributed_data_loader_bos_bestfit(tokenizer, args.device_batch_size, args.max_seq_len, split="val", device=device)
 +build_train_bpb_loader = lambda: tokenizing_distributed_data_loader_bos_bestfit(tokenizer, args.device_batch_size, args.max_seq_len, split="train", device=device)
  ...
+ while True:
+     last_step = step == num_iterations # loop runs num_iterations+1 times so that we can eval/save at the end
+     flops_so_far = num_flops_per_token * total_batch_size * step
++    # Metrics for this step are gathered from separate blocks below (eval, loss logging)
++    # and written as a single CSV row once all of them have had a chance to run.
++    has_pending_metrics = False
++    pending_metrics = {"train_loss": "", "train_bpb": "", "val_bpb": ""}
+ ...
          model.eval()
          val_loader = build_val_loader()
 +        train_bpb_loader = build_train_bpb_loader()
@@ -408,10 +416,17 @@ nanochat's `base_train.py` only ever evaluates bpb (via `nanochat.loss_eval.eval
              "val/bpb": val_bpb,
 +            "train/bpb": train_bpb,
          })
-+        if master_process:
-+            metrics_writer.writerow([step, flops_so_far, total_training_time, "", train_bpb, val_bpb])
-+            metrics_file.flush()
++        has_pending_metrics = True
++        pending_metrics["train_bpb"] = train_bpb
++        pending_metrics["val_bpb"] = val_bpb
          model.train()
+ ...
+     # termination conditions (TODO: possibly also add loss explosions etc.)
+     if last_step:
++        if master_process and has_pending_metrics:
++            metrics_writer.writerow([step, flops_so_far, total_training_time, pending_metrics["train_loss"], pending_metrics["train_bpb"], pending_metrics["val_bpb"]])
++            metrics_file.flush()
++        break
  ...
      if step % 100 == 0:
          log_data = {
@@ -426,9 +441,12 @@ nanochat's `base_train.py` only ever evaluates bpb (via `nanochat.loss_eval.eval
              "train/epoch": epoch,
          }
          wandb_run.log(log_data)
-+        if master_process:
-+            metrics_writer.writerow([step, flops_so_far, total_training_time, debiased_smooth_loss, "", ""])
-+            metrics_file.flush()
++        has_pending_metrics = True
++        pending_metrics["train_loss"] = debiased_smooth_loss
++
++    if master_process and has_pending_metrics:
++        metrics_writer.writerow([step, flops_so_far, total_training_time, pending_metrics["train_loss"], pending_metrics["train_bpb"], pending_metrics["val_bpb"]])
++        metrics_file.flush()
  ...
  # cleanup
 +if master_process:
@@ -437,7 +455,9 @@ nanochat's `base_train.py` only ever evaluates bpb (via `nanochat.loss_eval.eval
  compute_cleanup()
 ```
 
-`build_train_bpb_loader` mirrors nanochat's own `build_val_loader` exactly — same unmodified `tokenizing_distributed_data_loader_bos_bestfit`, just `split="train"` instead of `"val"` — and is a separate loader instance from `train_loader`, so evaluating bpb on it never consumes or perturbs the actual training data stream. Both bpb evaluations now happen together, under the same `model.eval()` / `disable_fp8` / `model.train()` guard, at the existing `--eval-every` cadence — no new cadence, no approximation, no state (like a `bytes_per_token` ratio) to thread through checkpoint resume. `metrics.csv` is opened once (only by `master_process`, the same convention nanochat already uses for checkpoint saving): truncated (`"w"`) on a fresh run so each new model starts clean, appended (`"a"`) on resume so history isn't lost, with a header written whenever the file comes up empty. The eval-cadence block now writes one CSV row per eval containing both `train_bpb` and `val_bpb` together; the separate per-100-steps block still logs the free EMA `train_loss` for a denser wandb/CSV loss curve, but no longer derives a bpb number from it. Both rows also carry `total_training_flops` and `total_training_time`, mirroring the fields already sent to `wandb_run.log(...)` in each block, so the CSV isn't missing anything wandb gets. `wandb_run.log(...)` itself is untouched (still a no-op under `--run=dummy`); the CSV write is purely additive. The file is closed at the very end, after the training loop but before cleanup.
+`build_train_bpb_loader` mirrors nanochat's own `build_val_loader` exactly — same unmodified `tokenizing_distributed_data_loader_bos_bestfit`, just `split="train"` instead of `"val"` — and is a separate loader instance from `train_loader`, so evaluating bpb on it never consumes or perturbs the actual training data stream. Both bpb evaluations now happen together, under the same `model.eval()` / `disable_fp8` / `model.train()` guard, at the existing `--eval-every` cadence — no new cadence, no approximation, no state (like a `bytes_per_token` ratio) to thread through checkpoint resume. `metrics.csv` is opened once (only by `master_process`, the same convention nanochat already uses for checkpoint saving): truncated (`"w"`) on a fresh run so each new model starts clean, appended (`"a"`) on resume so history isn't lost, with a header written whenever the file comes up empty.
+
+The eval block and the loss-logging block run on different cadences (`--eval-every` vs. every 100 steps) but can land on the same `step`, so writing a CSV row directly from each block produced two rows for that step — one with `train_bpb`/`val_bpb` and a blank `train_loss`, the other the reverse. Both blocks now write into a shared `pending_metrics` dict instead, and a single `metrics_writer.writerow(...)` flushes it once per step, after whichever blocks were going to run this step already have. Each `step` now appears on at most one CSV row, with any field no block touched left as `""`. Both rows also carry `total_training_flops` and `total_training_time`, mirroring the fields already sent to `wandb_run.log(...)` in each block, so the CSV isn't missing anything wandb gets. `wandb_run.log(...)` itself is untouched (still a no-op under `--run=dummy`); the CSV write is purely additive. The file is closed at the very end, after the training loop but before cleanup.
 
 ### Change 2 of 2: `nanochat/flash_attention.py` — let `NANOCHAT_ATTN_IMPL` force the SDPA fallback
 

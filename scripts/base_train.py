@@ -428,6 +428,10 @@ print0(f"Total batch size {total_batch_size:,} => gradient accumulation steps: {
 while True:
     last_step = step == num_iterations # loop runs num_iterations+1 times so that we can eval/save at the end
     flops_so_far = num_flops_per_token * total_batch_size * step
+    # Metrics for this step are gathered from separate blocks below (eval, loss logging)
+    # and written as a single CSV row once all of them have had a chance to run.
+    has_pending_metrics = False
+    pending_metrics = {"train_loss": "", "train_bpb": "", "val_bpb": ""}
 
     # once in a while: evaluate the val and train bpb (all ranks participate)
     if args.eval_every > 0 and (last_step or step % args.eval_every == 0):
@@ -448,9 +452,9 @@ while True:
             "val/bpb": val_bpb,
             "train/bpb": train_bpb,
         })
-        if master_process:
-            metrics_writer.writerow([step, flops_so_far, total_training_time, "", train_bpb, val_bpb])
-            metrics_file.flush()
+        has_pending_metrics = True
+        pending_metrics["train_bpb"] = train_bpb
+        pending_metrics["val_bpb"] = val_bpb
         model.train()
 
     # once in a while: estimate the CORE metric (all ranks participate)
@@ -518,6 +522,9 @@ while True:
 
     # termination conditions (TODO: possibly also add loss explosions etc.)
     if last_step:
+        if master_process and has_pending_metrics:
+            metrics_writer.writerow([step, flops_so_far, total_training_time, pending_metrics["train_loss"], pending_metrics["train_bpb"], pending_metrics["val_bpb"]])
+            metrics_file.flush()
         break
 
     # -------------------------------------------------------------------------
@@ -596,9 +603,12 @@ while True:
             "train/epoch": epoch,
         }
         wandb_run.log(log_data)
-        if master_process:
-            metrics_writer.writerow([step, flops_so_far, total_training_time, debiased_smooth_loss, "", ""])
-            metrics_file.flush()
+        has_pending_metrics = True
+        pending_metrics["train_loss"] = debiased_smooth_loss
+
+    if master_process and has_pending_metrics:
+        metrics_writer.writerow([step, flops_so_far, total_training_time, pending_metrics["train_loss"], pending_metrics["train_bpb"], pending_metrics["val_bpb"]])
+        metrics_file.flush()
 
     # state update
     first_step_of_run = (step == 0) or (resuming and step == args.resume_from_step)
