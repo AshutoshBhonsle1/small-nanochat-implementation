@@ -20,6 +20,5 @@ base_data_climbmix
 # are NOT ignored: the trained model (via Git LFS, see .gitattributes) and its metrics/eval
 # log are committed, since rerunning training just to regenerate them is expensive.
 task2/tokenizer/
-task2/bpb_curve.png
 task2/eval_bundle.zip
 task2/eval_bundle.zip.lock

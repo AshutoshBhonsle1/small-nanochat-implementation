@@ -13,7 +13,7 @@ import os
 import matplotlib.pyplot as plt
 
 METRICS_PATH = os.path.join("task2", "logs", "metrics.csv")
-OUTPUT_PATH = os.path.join("task2", "bpb_curve.png")
+OUTPUT_PATH = os.path.join("task2", "logs", "bpb_curve.png")
 
 
 def load_curves(metrics_path):
