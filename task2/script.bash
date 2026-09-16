@@ -39,8 +39,3 @@ python -m scripts.base_train \
     --depth=4 \
     --eval-every=100 \
     --window-pattern=L
-
-# Final evaluation: bpb on both splits plus qualitative (unconditioned) completions from the
-# finished checkpoint, saved to a log file for pulling numbers/quotes into the report.
-mkdir -p task2/logs
-python -m scripts.base_eval --eval bpb,sample --model-tag d4 | tee task2/logs/eval_d4.txt
