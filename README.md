@@ -358,6 +358,49 @@ bash task2/script.bash
 - Runs `scripts.base_train --depth=4 --eval-every=100 --window-pattern=L`. `--eval-every=100` controls how often `base_train.py` evaluates bpb (every 100 steps); Change 1 below makes it evaluate the train split at the same cadence, right alongside the val split it already evaluates there. `--window-pattern=L` follows `base_train.py`'s own startup recommendation: SDPA (forced above) has no sliding-window support, so nanochat's default alternating pattern (`SSSL`) would tank GPU utilization — `base_train.py` prints exactly this warning and suggests `L` whenever Flash Attention 3 isn't in use. Everything else is left at nanochat's own defaults — including `--save-every` (checkpoint only at the very end).
 - Finishes with `scripts.base_eval --eval bpb,sample --model-tag d4`, piped to `task2/logs/eval_d4.txt`, for a clean final bpb readout on both splits plus qualitative (unconditioned, no-system-prompt) sample completions — take 5 of the printed unconditioned samples for the report's qualitative-inspection deliverable.
 
+### Sampling custom completions from the base model
+
+`scripts/base_eval.py`'s `--eval sample` mode ships with a fixed list of demo prompts. Pass `--prompt` (repeatable) to sample your own instead:
+
+```bash
+python -m scripts.base_eval --eval sample --model-tag d4 --prompt "Once upon a time,"
+```
+
+This replaces the built-in prompt list; the 8 unconditioned samples are skipped in that case, since they're only useful when sampling the default demo prompts.
+
+```diff
+ def main():
+     parser = argparse.ArgumentParser(description="Base model evaluation")
+     parser.add_argument('--eval', type=str, default='core,bpb,sample', help='Comma-separated evaluations to run: core,bpb,sample (default: all)')
++    parser.add_argument('--prompt', type=str, action='append', default=None, help='Custom prompt to sample from (can be passed multiple times); replaces the default prompt list for --eval sample')
+     parser.add_argument('--model-tag', type=str, default=None, help='nanochat model tag to identify the checkpoint directory')
+ ...
+         if ddp_rank == 0:
+-            prompts = [
++            prompts = args.prompt if args.prompt is not None else [
+                 "The capital of France is",
+                 "The chemical symbol of gold is",
+                 "If yesterday was Friday, then tomorrow will be",
+ ...
+-            print0("\nUnconditioned samples:")
+-            tokens = tokenizer("", prepend="<|bos|>")
+-            uncond, _ = engine.generate_batch(tokens, num_samples=8, max_tokens=128, temperature=1.0)
+-            for sample in uncond:
+-                sample_str = tokenizer.decode(sample)
+-                print0("-" * 80)
+-                print0(sample_str)
+-                unconditioned_samples.append(sample_str)
++            if args.prompt is None:
++                print0("\nUnconditioned samples:")
++                tokens = tokenizer("", prepend="<|bos|>")
++                uncond, _ = engine.generate_batch(tokens, num_samples=8, max_tokens=128, temperature=1.0)
++                for sample in uncond:
++                    sample_str = tokenizer.decode(sample)
++                    print0("-" * 80)
++                    print0(sample_str)
++                    unconditioned_samples.append(sample_str)
+```
+
 ### Why a training-set bpb curve needs a code change
 
 nanochat's `base_train.py` only ever evaluates bpb (via `nanochat.loss_eval.evaluate_bpb`) on the val split; the training curve it logs is plain EMA'd loss (nats/token), a different unit. `evaluate_bpb` itself is generic — it just evaluates the model on whatever batches it's handed — and `scripts/base_eval.py` already calls it on both `"train"` and `"val"` loaders (see [`scripts/base_eval.py`](scripts/base_eval.py)). So getting a real train bpb during training needs no new formula and no edit to `nanochat/`: it's the same unmodified `evaluate_bpb` call, just also pointed at a train-split loader, run at the same cadence as the val bpb eval nanochat already does.

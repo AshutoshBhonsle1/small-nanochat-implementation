@@ -128,6 +128,7 @@ def evaluate_core(model, tokenizer, device, max_per_task=-1):
 def main():
     parser = argparse.ArgumentParser(description="Base model evaluation")
     parser.add_argument('--eval', type=str, default='core,bpb,sample', help='Comma-separated evaluations to run: core,bpb,sample (default: all)')
+    parser.add_argument('--prompt', type=str, action='append', default=None, help='Custom prompt to sample from (can be passed multiple times); replaces the default prompt list for --eval sample')
     parser.add_argument('--model-tag', type=str, default=None, help='nanochat model tag to identify the checkpoint directory')
     parser.add_argument('--step', type=int, default=None, help='Model step to load (default = last)')
     parser.add_argument('--max-per-task', type=int, default=-1, help='Max examples per CORE task (-1 = all)')
@@ -168,7 +169,7 @@ def main():
         print0("Model Samples")
         print0("="*80)
         if ddp_rank == 0:
-            prompts = [
+            prompts = args.prompt if args.prompt is not None else [
                 "The capital of France is",
                 "The chemical symbol of gold is",
                 "If yesterday was Friday, then tomorrow will be",
@@ -187,14 +188,15 @@ def main():
                 print0(sample_str)
                 samples.append(sample_str)
 
-            print0("\nUnconditioned samples:")
-            tokens = tokenizer("", prepend="<|bos|>")
-            uncond, _ = engine.generate_batch(tokens, num_samples=8, max_tokens=128, temperature=1.0)
-            for sample in uncond:
-                sample_str = tokenizer.decode(sample)
-                print0("-" * 80)
-                print0(sample_str)
-                unconditioned_samples.append(sample_str)
+            if args.prompt is None:
+                print0("\nUnconditioned samples:")
+                tokens = tokenizer("", prepend="<|bos|>")
+                uncond, _ = engine.generate_batch(tokens, num_samples=8, max_tokens=128, temperature=1.0)
+                for sample in uncond:
+                    sample_str = tokenizer.decode(sample)
+                    print0("-" * 80)
+                    print0(sample_str)
+                    unconditioned_samples.append(sample_str)
 
     # --- BPB evaluation ---
     if 'bpb' in eval_modes:
