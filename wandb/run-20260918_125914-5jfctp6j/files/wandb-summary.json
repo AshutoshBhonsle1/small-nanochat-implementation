@@ -1,1 +1,0 @@
-{"train/tok_per_sec":65044,"_wandb":{"runtime":960},"_step":18,"train/loss":0.8562205049255482,"total_training_flops":4428303351939072,"train/lrm":1,"total_training_time":686.3976602554321,"_runtime":960,"_timestamp":1.7897300896288927e+09,"train/dt":4.0301947593688965,"step":180,"train/epoch":1,"train/mfu":0,"val/bpb":2.1702158299116827}
