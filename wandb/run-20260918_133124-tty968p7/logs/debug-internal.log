@@ -1,0 +1,12 @@
+{"time":"2026-09-18T13:31:25.151314839+02:00","level":"INFO","msg":"stream: starting","core version":"0.21.3"}
+{"time":"2026-09-18T13:31:25.446979493+02:00","level":"INFO","msg":"stream: created new stream","id":"tty968p7"}
+{"time":"2026-09-18T13:31:25.447039966+02:00","level":"INFO","msg":"stream: started","id":"tty968p7"}
+{"time":"2026-09-18T13:31:25.447068913+02:00","level":"INFO","msg":"sender: started","stream_id":"tty968p7"}
+{"time":"2026-09-18T13:31:25.44706776+02:00","level":"INFO","msg":"handler: started","stream_id":"tty968p7"}
+{"time":"2026-09-18T13:31:25.447118476+02:00","level":"INFO","msg":"writer: started","stream_id":"tty968p7"}
+{"time":"2026-09-18T14:17:19.921737795+02:00","level":"INFO","msg":"handler: operation stats","stats":{"operations":[{"desc":"updating run metadata","runtime_seconds":0.000970249}],"total_operations":1}}
+{"time":"2026-09-18T14:17:20.626987014+02:00","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2026-09-18T14:17:21.01306564+02:00","level":"INFO","msg":"stream: closing","id":"tty968p7"}
+{"time":"2026-09-18T14:17:21.013101384+02:00","level":"INFO","msg":"handler: closed","stream_id":"tty968p7"}
+{"time":"2026-09-18T14:17:21.013202951+02:00","level":"INFO","msg":"sender: closed","stream_id":"tty968p7"}
+{"time":"2026-09-18T14:17:21.013241338+02:00","level":"INFO","msg":"stream: closed","id":"tty968p7"}
