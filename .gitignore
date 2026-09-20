@@ -24,3 +24,5 @@ task2/eval_bundle.zip
 task2/eval_bundle.zip.lock
 
 task_data/
+inspect_data.py
+inspect_data_results.txt
