@@ -1,0 +1,26 @@
+2026-09-19 14:24:29,142 INFO    MainThread:1216551 [wandb_setup.py:_flush():81] Current SDK version is 0.21.3
+2026-09-19 14:24:29,142 INFO    MainThread:1216551 [wandb_setup.py:_flush():81] Configure stats pid to 1216551
+2026-09-19 14:24:29,142 INFO    MainThread:1216551 [wandb_setup.py:_flush():81] Loading settings from /home/s5187974/.config/wandb/settings
+2026-09-19 14:24:29,143 INFO    MainThread:1216551 [wandb_setup.py:_flush():81] Loading settings from /local/s5187974/allm/assignments/a1/nanochat-workspace/agenticllm-assignment1-group3/wandb/settings
+2026-09-19 14:24:29,143 INFO    MainThread:1216551 [wandb_setup.py:_flush():81] Loading settings from environment variables
+2026-09-19 14:24:29,143 INFO    MainThread:1216551 [wandb_init.py:setup_run_log_directory():686] Logging user logs to /local/s5187974/allm/assignments/a1/nanochat-workspace/agenticllm-assignment1-group3/wandb/run-20260919_142429-hki626fq/logs/debug.log
+2026-09-19 14:24:29,143 INFO    MainThread:1216551 [wandb_init.py:setup_run_log_directory():687] Logging internal logs to /local/s5187974/allm/assignments/a1/nanochat-workspace/agenticllm-assignment1-group3/wandb/run-20260919_142429-hki626fq/logs/debug-internal.log
+2026-09-19 14:24:29,143 INFO    MainThread:1216551 [wandb_init.py:init():813] calling init triggers
+2026-09-19 14:24:29,143 INFO    MainThread:1216551 [wandb_init.py:init():818] wandb.init called with sweep_config: {}
+config: {'run': 'sft_stage2_run', 'device_type': '', 'model_tag': 'd4', 'model_step': 464, 'load_optimizer': 1, 'num_iterations': -1, 'max_seq_len': None, 'device_batch_size': 4, 'total_batch_size': None, 'embedding_lr': None, 'unembedding_lr': None, 'matrix_lr': None, 'init_lr_frac': 0.8, 'warmup_ratio': 0.0, 'warmdown_ratio': 0.5, 'final_lr_frac': 0.0, 'eval_every': 200, 'eval_tokens': 20971520, 'chatcore_every': 200, 'chatcore_max_cat': -1, 'chatcore_max_sample': 24, 'mmlu_epochs': 3, 'gsm8k_epochs': 4, '_wandb': {}}
+2026-09-19 14:24:29,143 INFO    MainThread:1216551 [wandb_init.py:init():854] starting backend
+2026-09-19 14:24:29,363 INFO    MainThread:1216551 [wandb_init.py:init():857] sending inform_init request
+2026-09-19 14:24:29,378 INFO    MainThread:1216551 [wandb_init.py:init():865] backend started and connected
+2026-09-19 14:24:29,388 INFO    MainThread:1216551 [wandb_init.py:init():936] updated telemetry
+2026-09-19 14:24:29,403 INFO    MainThread:1216551 [wandb_init.py:init():960] communicating run to backend with 90.0 second timeout
+2026-09-19 14:24:30,229 INFO    MainThread:1216551 [wandb_init.py:init():1011] starting run threads in backend
+2026-09-19 14:24:30,362 INFO    MainThread:1216551 [wandb_run.py:_console_start():2494] atexit reg
+2026-09-19 14:24:30,362 INFO    MainThread:1216551 [wandb_run.py:_redirect():2342] redirect: wrap_raw
+2026-09-19 14:24:30,363 INFO    MainThread:1216551 [wandb_run.py:_redirect():2411] Wrapping output streams.
+2026-09-19 14:24:30,364 INFO    MainThread:1216551 [wandb_run.py:_redirect():2434] Redirects installed.
+2026-09-19 14:24:30,371 INFO    MainThread:1216551 [wandb_init.py:init():1057] run started, returning control to user process
+2026-09-19 16:43:01,921 INFO    MainThread:1216551 [wandb_run.py:_finish():2260] finishing run bhonsle-ashutosh-leiden-university/nanochat-sft/hki626fq
+2026-09-19 16:43:01,921 INFO    MainThread:1216551 [wandb_run.py:_atexit_cleanup():2459] got exitcode: 0
+2026-09-19 16:43:01,922 INFO    MainThread:1216551 [wandb_run.py:_restore():2441] restore
+2026-09-19 16:43:01,923 INFO    MainThread:1216551 [wandb_run.py:_restore():2447] restore done
+2026-09-19 16:43:02,977 INFO    MainThread:1216551 [wandb_run.py:_footer_sync_info():3855] logging synced files

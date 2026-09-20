@@ -1,0 +1,130 @@
+_wandb:
+    value:
+        cli_version: 0.21.3
+        e:
+            0hhyz5wuhk7g7tgpmo8vrdz1sa4uepc4:
+                args:
+                    - --model-tag
+                    - d4
+                    - --model-step
+                    - "464"
+                    - --run
+                    - sft_stage2_run
+                    - --device-batch-size
+                    - "4"
+                cpu_count: 20
+                cpu_count_logical: 40
+                cudaVersion: "13.3"
+                disk:
+                    /:
+                        total: "107307073536"
+                        used: "15632023552"
+                email: bhonsle.ashutosh@gmail.com
+                executable: /local/s5187974/allm/assignments/a1/nanochat-workspace/agenticllm-assignment1-group3/.venv/bin/python
+                git:
+                    commit: 96d97111b33fb8e1f134b97bd7c956e61ef083d2
+                    remote: https://git.liacs.nl/s5107911/agenticllm-assignment1-group3
+                gpu: NVIDIA GeForce RTX 2080 Ti
+                gpu_count: 6
+                gpu_nvidia:
+                    - architecture: Turing
+                      cudaCores: 4352
+                      memoryTotal: "11811160064"
+                      name: NVIDIA GeForce RTX 2080 Ti
+                      uuid: GPU-e7ea78c8-a81b-b36a-ef22-facec360d613
+                    - architecture: Turing
+                      cudaCores: 4352
+                      memoryTotal: "11811160064"
+                      name: NVIDIA GeForce RTX 2080 Ti
+                      uuid: GPU-0906c61b-6740-d39c-4415-7cfd664ba762
+                    - architecture: Turing
+                      cudaCores: 4352
+                      memoryTotal: "11811160064"
+                      name: NVIDIA GeForce RTX 2080 Ti
+                      uuid: GPU-3ef61d0a-14ab-8f0b-b842-7d28f52f28a2
+                    - architecture: Turing
+                      cudaCores: 4352
+                      memoryTotal: "11811160064"
+                      name: NVIDIA GeForce RTX 2080 Ti
+                      uuid: GPU-be91a707-1719-e5f4-0eef-7ad5ac9df6b0
+                    - architecture: Turing
+                      cudaCores: 4352
+                      memoryTotal: "11811160064"
+                      name: NVIDIA GeForce RTX 2080 Ti
+                      uuid: GPU-8b049a99-7bec-fb66-7f01-6d44e2b3badf
+                    - architecture: Turing
+                      cudaCores: 4352
+                      memoryTotal: "11811160064"
+                      name: NVIDIA GeForce RTX 2080 Ti
+                      uuid: GPU-26ddcf1a-07e5-e3ce-8e6a-d63d06b271fe
+                host: tritanium
+                memory:
+                    total: "1081535979520"
+                os: Linux-5.14.0-687.26.1.el9_8.x86_64-x86_64-with-glibc2.34
+                program: -m scripts.chat_sft
+                python: CPython 3.10.21
+                root: /local/s5187974/allm/assignments/a1/nanochat-workspace/agenticllm-assignment1-group3
+                startedAt: "2026-09-19T12:18:04.914317Z"
+                writerId: 0hhyz5wuhk7g7tgpmo8vrdz1sa4uepc4
+        m: []
+        python_version: 3.10.21
+        t:
+            "1":
+                - 1
+                - 49
+            "2":
+                - 1
+                - 49
+            "3":
+                - 13
+                - 16
+            "4": 3.10.21
+            "5": 0.21.3
+            "12": 0.21.3
+            "13": linux-x86_64
+chatcore_every:
+    value: 200
+chatcore_max_cat:
+    value: -1
+chatcore_max_sample:
+    value: 24
+device_batch_size:
+    value: 4
+device_type:
+    value: ""
+embedding_lr:
+    value: null
+eval_every:
+    value: 200
+eval_tokens:
+    value: 20971520
+final_lr_frac:
+    value: 0
+gsm8k_epochs:
+    value: 4
+init_lr_frac:
+    value: 0.8
+load_optimizer:
+    value: 1
+matrix_lr:
+    value: null
+max_seq_len:
+    value: null
+mmlu_epochs:
+    value: 3
+model_step:
+    value: 464
+model_tag:
+    value: d4
+num_iterations:
+    value: -1
+run:
+    value: sft_stage2_run
+total_batch_size:
+    value: null
+unembedding_lr:
+    value: null
+warmdown_ratio:
+    value: 0.5
+warmup_ratio:
+    value: 0

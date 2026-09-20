@@ -1,0 +1,25 @@
+{
+  "os": "Linux-5.14.0-687.26.1.el9_8.x86_64-x86_64-with-glibc2.34",
+  "python": "CPython 3.10.21",
+  "startedAt": "2026-09-19T11:40:34.230154Z",
+  "args": [
+    "--model-tag",
+    "d4",
+    "--model-step",
+    "464",
+    "--run",
+    "sft_stage2_run",
+    "--device-batch-size",
+    "4"
+  ],
+  "program": "-m scripts.chat_sft",
+  "git": {
+    "remote": "https://git.liacs.nl/s5107911/agenticllm-assignment1-group3",
+    "commit": "6739eeb136dc91631103bae51e97ac9fb4fc20db"
+  },
+  "email": "bhonsle.ashutosh@gmail.com",
+  "root": "/local/s5187974/allm/assignments/a1/nanochat-workspace/agenticllm-assignment1-group3",
+  "host": "tritanium",
+  "executable": "/local/s5187974/allm/assignments/a1/nanochat-workspace/agenticllm-assignment1-group3/.venv/bin/python",
+  "writerId": "s2xwtpjvcko3jxn9emkjcxjisa052za9"
+}

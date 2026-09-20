@@ -1,0 +1,20 @@
+Traceback (most recent call last):
+  File "/home/s5187974/.local/share/uv/python/cpython-3.10-linux-x86_64-gnu/lib/python3.10/runpy.py", line 196, in _run_module_as_main
+    return _run_code(code, main_globals, None,
+  File "/home/s5187974/.local/share/uv/python/cpython-3.10-linux-x86_64-gnu/lib/python3.10/runpy.py", line 86, in _run_code
+    exec(code, run_globals)
+  File "/local/s5187974/allm/assignments/a1/nanochat-workspace/agenticllm-assignment1-group3/scripts/chat_sft.py", line 94, in <module>
+    model, tokenizer, meta = load_model("chatmidtrain", device, phase="train", model_tag=args.model_tag, step=args.model_step)
+  File "/local/s5187974/allm/assignments/a1/nanochat-workspace/agenticllm-assignment1-group3/nanochat/checkpoint_manager.py", line 164, in load_model
+    model_dir = {
+KeyError: 'chatmidtrain'
+[rank0]: Traceback (most recent call last):
+[rank0]:   File "/home/s5187974/.local/share/uv/python/cpython-3.10-linux-x86_64-gnu/lib/python3.10/runpy.py", line 196, in _run_module_as_main
+[rank0]:     return _run_code(code, main_globals, None,
+[rank0]:   File "/home/s5187974/.local/share/uv/python/cpython-3.10-linux-x86_64-gnu/lib/python3.10/runpy.py", line 86, in _run_code
+[rank0]:     exec(code, run_globals)
+[rank0]:   File "/local/s5187974/allm/assignments/a1/nanochat-workspace/agenticllm-assignment1-group3/scripts/chat_sft.py", line 94, in <module>
+[rank0]:     model, tokenizer, meta = load_model("chatmidtrain", device, phase="train", model_tag=args.model_tag, step=args.model_step)
+[rank0]:   File "/local/s5187974/allm/assignments/a1/nanochat-workspace/agenticllm-assignment1-group3/nanochat/checkpoint_manager.py", line 164, in load_model
+[rank0]:     model_dir = {
+[rank0]: KeyError: 'chatmidtrain'

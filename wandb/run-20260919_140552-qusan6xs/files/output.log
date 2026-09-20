@@ -1,0 +1,45 @@
+2026-09-19 14:05:53,542 - nanochat.checkpoint_manager - [32m[1mINFO[0m - Loading model from /home/s5187974/.cache/nanochat/chatmidtrain_checkpoints/d4 with step 464
+Traceback (most recent call last):
+  File "/home/s5187974/.local/share/uv/python/cpython-3.10-linux-x86_64-gnu/lib/python3.10/runpy.py", line 196, in _run_module_as_main
+    return _run_code(code, main_globals, None,
+  File "/home/s5187974/.local/share/uv/python/cpython-3.10-linux-x86_64-gnu/lib/python3.10/runpy.py", line 86, in _run_code
+    exec(code, run_globals)
+  File "/local/s5187974/allm/assignments/a1/nanochat-workspace/agenticllm-assignment1-group3/scripts/chat_sft.py", line 94, in <module>
+    model, tokenizer, meta = load_model("midtrain", device, phase="train", model_tag=args.model_tag, step=args.model_step)
+  File "/local/s5187974/allm/assignments/a1/nanochat-workspace/agenticllm-assignment1-group3/nanochat/checkpoint_manager.py", line 172, in load_model
+    return load_model_from_dir(checkpoints_dir, *args, **kwargs)
+  File "/local/s5187974/allm/assignments/a1/nanochat-workspace/agenticllm-assignment1-group3/nanochat/checkpoint_manager.py", line 160, in load_model_from_dir
+    model, tokenizer, meta_data = build_model(checkpoint_dir, step, device, phase)
+  File "/local/s5187974/allm/assignments/a1/nanochat-workspace/agenticllm-assignment1-group3/nanochat/checkpoint_manager.py", line 85, in build_model
+    model_data, optimizer_data, meta_data = load_checkpoint(checkpoint_dir, step, device, load_optimizer=False)
+  File "/local/s5187974/allm/assignments/a1/nanochat-workspace/agenticllm-assignment1-group3/nanochat/checkpoint_manager.py", line 63, in load_checkpoint
+    model_data = torch.load(model_path, map_location=device)
+  File "/local/s5187974/allm/assignments/a1/nanochat-workspace/agenticllm-assignment1-group3/.venv/lib/python3.10/site-packages/torch/serialization.py", line 1484, in load
+    with _open_file_like(f, "rb") as opened_file:
+  File "/local/s5187974/allm/assignments/a1/nanochat-workspace/agenticllm-assignment1-group3/.venv/lib/python3.10/site-packages/torch/serialization.py", line 759, in _open_file_like
+    return _open_file(name_or_buffer, mode)
+  File "/local/s5187974/allm/assignments/a1/nanochat-workspace/agenticllm-assignment1-group3/.venv/lib/python3.10/site-packages/torch/serialization.py", line 740, in __init__
+    super().__init__(open(name, mode))
+FileNotFoundError: [Errno 2] No such file or directory: '/home/s5187974/.cache/nanochat/chatmidtrain_checkpoints/d4/model_000464.pt'
+[rank0]: Traceback (most recent call last):
+[rank0]:   File "/home/s5187974/.local/share/uv/python/cpython-3.10-linux-x86_64-gnu/lib/python3.10/runpy.py", line 196, in _run_module_as_main
+[rank0]:     return _run_code(code, main_globals, None,
+[rank0]:   File "/home/s5187974/.local/share/uv/python/cpython-3.10-linux-x86_64-gnu/lib/python3.10/runpy.py", line 86, in _run_code
+[rank0]:     exec(code, run_globals)
+[rank0]:   File "/local/s5187974/allm/assignments/a1/nanochat-workspace/agenticllm-assignment1-group3/scripts/chat_sft.py", line 94, in <module>
+[rank0]:     model, tokenizer, meta = load_model("midtrain", device, phase="train", model_tag=args.model_tag, step=args.model_step)
+[rank0]:   File "/local/s5187974/allm/assignments/a1/nanochat-workspace/agenticllm-assignment1-group3/nanochat/checkpoint_manager.py", line 172, in load_model
+[rank0]:     return load_model_from_dir(checkpoints_dir, *args, **kwargs)
+[rank0]:   File "/local/s5187974/allm/assignments/a1/nanochat-workspace/agenticllm-assignment1-group3/nanochat/checkpoint_manager.py", line 160, in load_model_from_dir
+[rank0]:     model, tokenizer, meta_data = build_model(checkpoint_dir, step, device, phase)
+[rank0]:   File "/local/s5187974/allm/assignments/a1/nanochat-workspace/agenticllm-assignment1-group3/nanochat/checkpoint_manager.py", line 85, in build_model
+[rank0]:     model_data, optimizer_data, meta_data = load_checkpoint(checkpoint_dir, step, device, load_optimizer=False)
+[rank0]:   File "/local/s5187974/allm/assignments/a1/nanochat-workspace/agenticllm-assignment1-group3/nanochat/checkpoint_manager.py", line 63, in load_checkpoint
+[rank0]:     model_data = torch.load(model_path, map_location=device)
+[rank0]:   File "/local/s5187974/allm/assignments/a1/nanochat-workspace/agenticllm-assignment1-group3/.venv/lib/python3.10/site-packages/torch/serialization.py", line 1484, in load
+[rank0]:     with _open_file_like(f, "rb") as opened_file:
+[rank0]:   File "/local/s5187974/allm/assignments/a1/nanochat-workspace/agenticllm-assignment1-group3/.venv/lib/python3.10/site-packages/torch/serialization.py", line 759, in _open_file_like
+[rank0]:     return _open_file(name_or_buffer, mode)
+[rank0]:   File "/local/s5187974/allm/assignments/a1/nanochat-workspace/agenticllm-assignment1-group3/.venv/lib/python3.10/site-packages/torch/serialization.py", line 740, in __init__
+[rank0]:     super().__init__(open(name, mode))
+[rank0]: FileNotFoundError: [Errno 2] No such file or directory: '/home/s5187974/.cache/nanochat/chatmidtrain_checkpoints/d4/model_000464.pt'
