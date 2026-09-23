@@ -19,7 +19,7 @@ export NANOCHAT_ATTN_IMPL="sdpa"
 # `cp -r src dst` copies src *into* dst (nesting) instead of overwriting it if dst already exists
 # as a directory, which would otherwise pile up stale nested copies on repeated runs.
 if [ ! -d "task1/tokenizer_32k" ]; then
-    echo "task1/tokenizer_32k not found. Run task1/script.bash first to train it." >&2
+    echo "task1/tokenizer_32k not found. Run task1/train_tokenizers.bash first to train it." >&2
     exit 1
 fi
 mkdir -p task2

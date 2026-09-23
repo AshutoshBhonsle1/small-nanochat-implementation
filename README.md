@@ -71,38 +71,49 @@ source .venv/bin/activate
 
 The environment must be active whenever you run the assignment code.
 
-## Download the ClimbMix shards
+## Task 1: Tokenization
 
-From the repository root, with the virtual environment activated, run:
+Task 1 trains two BPE tokenizers with nanochat's Rust tokenizer trainer on a 500 MB sample of ClimbMix — one with a vocabulary of 8,192 tokens and one with 32,768 — and compares them on compression ratio (bytes of text per token) and sequence length (tokens per text). Everything lives under `task1/`.
+
+### Running Task 1
+
+From the repository root:
 
 ```bash
-bash task1/script.bash
+bash task1/train_tokenizers.bash   # download data, train both tokenizers, compare them
+bash task1/eval_tokenizers.bash    # rerun only the comparison, using the committed tokenizers
 ```
 
-The script downloads 500 MegaBytes of ClimbMix shards (approximately 5.4, rounded to 6) into `task1/base_data_climbmix`.
+[`task1/train_tokenizers.bash`](task1/train_tokenizers.bash):
 
-This is done via a new argument added to the original dataset.py for passing the desired dataset size.
+- **Lines 3–4** activate the virtual environment, so the script also works if you forgot to `source .venv/bin/activate` first.
+- **Line 7** sets `NANOCHAT_BASE_DIR="./task1"`. nanochat resolves every data path (dataset shards, tokenizer output) relative to this directory, which otherwise defaults to `~/.cache/nanochat`. Setting it keeps Task 1's data and tokenizers inside `task1/`.
+- **Line 10** runs `python -m nanochat.dataset -s 500` to download 500 MB of ClimbMix shards into `task1/base_data_climbmix/`. The `-s` flag didn't exist upstream and was added for this task — see Change 1 below.
+- **Lines 16–18** run `python -m scripts.tok_train --vocab-size 32768` and then move the result to `task1/tokenizer_32k`. `tok_train.py` always saves to `<NANOCHAT_BASE_DIR>/tokenizer`, so each tokenizer has to be renamed before the next one is trained over it. The `rm -rf` before the `mv` matters: if `task1/tokenizer_32k` already exists from an earlier run, `mv task1/tokenizer task1/tokenizer_32k` would move the new tokenizer _inside_ the old directory instead of replacing it, leaving a stale tokenizer in place.
+- **Lines 21–23** do the same for the 8k tokenizer (`--vocab-size 8192`), saved to `task1/tokenizer_8k`.
+- **Lines 26–40** run the four `tok_eval.py --text ...` comparisons. These are the same commands as in `eval_tokenizers.bash`, described below.
 
-The code diff is as follows:
+[`task1/eval_tokenizers.bash`](task1/eval_tokenizers.bash) reruns only the comparison, without downloading or training anything, so it can be used with the committed tokenizers straight after cloning:
+
+- **Lines 3–7** activate the virtual environment and set `NANOCHAT_BASE_DIR="./task1"` exactly as above, so `tok_eval.py` finds `task1/tokenizer_32k` and `task1/tokenizer_8k`.
+- **Line 10** compares the tokenizers on an English paragraph describing sandwiches.
+- **Line 13** compares them on a Latin translation of the same paragraph: the same content and alphabet, but a language other than English. The inner `"apertum"` quotes close and reopen the bash string, so the text actually passed to Python reads `genus apertum vocatur` without the quotation marks.
+- **Line 16** compares them on the first 100 decimal places of π (numbers).
+- **Lines 19–24** compare them on a short Python snippet (source code, including indentation and newlines) — the token-split printing loop from Change 2.
+
+### Change 1 of 2: `nanochat/dataset.py` — download a dataset size in MB
+
+Upstream, `nanochat.dataset` only accepts a number of shards (`-n`). The assignment asks for a 500 MB sample, so a `-s/--size-dataset` argument was added that works out the number of shards from a size in MB:
 
 ```diff
---- a/nanochat/dataset.py
-+++ b/nanochat/dataset.py
-@@ -136,14 +136,26 @@
- if __name__ == "__main__":
      parser = argparse.ArgumentParser(description="Download pretraining dataset shards")
      parser.add_argument("-n", "--num-files", type=int, default=-1, help="Number of train shards to download (default: -1), -1 = disable")
      parser.add_argument("-w", "--num-workers", type=int, default=4, help="Number of parallel download workers (default: 4)")
 +    parser.add_argument("-s", "--size-dataset", type=int, default=0, help="Size of the dataset in MB that you want to download.")
      args = parser.parse_args()
-
-     # Prepare the output directory
-     os.makedirs(DATA_DIR, exist_ok=True)
-
-     # The way this works is that the user specifies the number of train shards to download via the -n flag.
-     # In addition to that, the validation shard is *always* downloaded and is pinned to be the last shard.
-
+ ...
 -    num_train_shards = MAX_SHARD if args.num_files == -1 else min(args.num_files, MAX_SHARD)
++
 +    if args.size_dataset == 0:
 +        num_train_shards = MAX_SHARD if args.num_files == -1 else min(args.num_files, MAX_SHARD)
 +    else:
@@ -114,159 +125,34 @@ The code diff is as follows:
 +        size_shard_mb = size_shard_bytes / 1000000
 +        #calculate the number of required shards
 +        num_train_shards = math.ceil(args.size_dataset/size_shard_mb)
-
++
      ids_to_download = list(range(num_train_shards))
      ids_to_download.append(MAX_SHARD) # always download the validation shard
 ```
 
-## Train the tokenizers
+A single HTTP `HEAD` request reads the size of the first shard without downloading it. Shards are all roughly the same size, so dividing the requested size by it and rounding **up** gives enough shards to cover at least that many MB. Without `-s` (the default `0`), the upstream `-n` behaviour is unchanged. Task 2 reuses the same flag.
 
-Tokenizer training is included in [`task1/script.bash`](task1/script.bash). Running the script trains both required tokenizers with nanochat's Rust BPE tokenizer trainer:
+### Change 2 of 2: `scripts/tok_eval.py` — compare our two tokenizers, on any text
 
-- a 32k-vocabulary tokenizer, saved to `task1/tokenizer_32k`
-- an 8k-vocabulary tokenizer, saved to `task1/tokenizer_8k`
+Upstream, `tok_eval.py` compares nanochat's default tokenizer (`get_tokenizer()`, loaded from `<NANOCHAT_BASE_DIR>/tokenizer`) against the pretrained GPT-2 and GPT-4 tokenizers, on a fixed set of built-in samples. That didn't fit Task 1 for three reasons, and each one led to a change:
 
-The script sets `NANOCHAT_BASE_DIR="./task1"`, so the tokenizers are saved alongside the downloaded dataset. Unlike `task1/base_data_climbmix` (gitignored — the raw dataset shards aren't committed), the trained tokenizer files themselves are committed to the repo as Task 1's deliverable.
-
-The resulting files are:
-
-```text
-task1/
-├── tokenizer_32k/
-│   ├── tokenizer.pkl
-│   └── token_bytes.pt
-└── tokenizer_8k/
-    ├── tokenizer.pkl
-    └── token_bytes.pt
-```
-
-## Compare tokenizers
-
-[`scripts/tok_eval.py`](scripts/tok_eval.py) measures each tokenizer's compression ratio (bytes of raw text per token) and resulting sequence length (number of tokens) across a handful of text samples (news, Korean, code, math/LaTeX, science) plus the actual ClimbMix train/val shards.
-
-Originally the script compared nanochat's default tokenizer (`get_tokenizer()`, loaded from `<NANOCHAT_BASE_DIR>/tokenizer`) against the pretrained GPT-2 and GPT-4 (`cl100k_base`) tokenizers. Since this assignment only produces the 32k and 8k tokenizers above, and neither is ever saved to the plain `tokenizer/` directory, the script was changed to load `tokenizer_32k` and `tokenizer_8k` directly and compare them against each other instead of against GPT-2/GPT-4:
+1. **It loads the wrong tokenizers.** Task 1 produces `tokenizer_32k` and `tokenizer_8k` and never saves anything to the plain `tokenizer/` directory, and the question is how _our two_ vocabulary sizes compare, not how either compares to GPT-2/GPT-4. The script now loads both directories with `RustBPETokenizer.from_directory` and compares them with each other. `print_comparison` is generalised from "baseline vs Ours" to any two named tokenizers.
+2. **It can only evaluate built-in text.** A `--text` argument was added. When it is passed, only that text is evaluated, and the ClimbMix train/val shards are no longer read at all (upstream reads them unconditionally, which is slow and requires the dataset to be downloaded).
+3. **A compression ratio doesn't show _where_ the extra tokens come from.** With `--text`, the script also prints each tokenizer's actual token split, decoding every token id back to its text with `id_to_token` and joining the pieces with `|`.
 
 ```diff
 -from nanochat.tokenizer import get_tokenizer, RustBPETokenizer
++import argparse
 +import os
 +
 +from nanochat.tokenizer import RustBPETokenizer
  from nanochat.dataset import parquets_iter_batched
 +from nanochat.common import get_base_dir
-
-@@
--# Try out current default compared to GPT-2 and GPT-4 tokenizers
-+# Compare our 32k and 8k vocabulary tokenizers against each other
-+base_dir = get_base_dir()
-+tokenizer_dirs = {
-+    "32k": os.path.join(base_dir, "tokenizer_32k"),
-+    "8k": os.path.join(base_dir, "tokenizer_8k"),
-+}
 +
- tokenizer_results = {}
- vocab_sizes = {}
-
--for tokenizer_name in ["gpt2", "gpt4", "ours"]:
-+for tokenizer_name, tokenizer_dir in tokenizer_dirs.items():
-
--    if tokenizer_name == "gpt2":
--        tokenizer = RustBPETokenizer.from_pretrained("gpt2") # gpt-2 base model tokenizer
--    elif tokenizer_name == "gpt4":
--        tokenizer = RustBPETokenizer.from_pretrained("cl100k_base") # gpt-4 base model tokenizer
--    else:
--        tokenizer = get_tokenizer()
-+    tokenizer = RustBPETokenizer.from_directory(tokenizer_dir)
-
-     vocab_sizes[tokenizer_name] = tokenizer.get_vocab_size()
-     tokenizer_results[tokenizer_name] = {}
-
-@@
- # Print vocab sizes
- print(f"\nVocab sizes:")
--print(f"GPT-2: {vocab_sizes['gpt2']}")
--print(f"GPT-4: {vocab_sizes['gpt4']}")
--print(f"Ours: {vocab_sizes['ours']}")
-+print(f"32k tokenizer: {vocab_sizes['32k']}")
-+print(f"8k tokenizer: {vocab_sizes['8k']}")
-
--def print_comparison(baseline_name, baseline_results, ours_results, all_text):
--    """Print comparison table between baseline tokenizer and ours."""
--    print(f"\nComparison with {baseline_name}:")
-+def print_comparison(baseline_name, baseline_results, other_name, other_results, all_text):
-+    """Print comparison table between two tokenizers."""
-+    print(f"\nComparison: {baseline_name} vs {other_name}:")
-     print("=" * 95)
--    print(f"{'Text Type':<10} {'Bytes':<8} {baseline_name:<15} {'Ours':<15} {'Relative':<12} {'Better':<10}")
-+    print(f"{'Text Type':<10} {'Bytes':<8} {baseline_name:<15} {other_name:<15} {'Relative':<12} {'Better':<10}")
-     print(f"{'':10} {'':8} {'Tokens':<7} {'Ratio':<7} {'Tokens':<7} {'Ratio':<7} {'Diff %':<12}")
-     print("-" * 95)
-
-     for name, text in all_text:
-         baseline_data = baseline_results[name]
--        ours_data = ours_results[name]
-+        other_data = other_results[name]
-
--        # Calculate relative difference (positive means ours is better, negative means worse)
--        # Using tokens: fewer tokens is better, so we calculate (baseline_tokens - ours_tokens) / baseline_tokens
--        relative_diff = ((baseline_data['tokens'] - ours_data['tokens']) / baseline_data['tokens']) * 100
-+        # Calculate relative difference (positive means other is better, negative means worse)
-+        # Using tokens: fewer tokens is better, so we calculate (baseline_tokens - other_tokens) / baseline_tokens
-+        relative_diff = ((baseline_data['tokens'] - other_data['tokens']) / baseline_data['tokens']) * 100
-
-         # Determine which has better compression (higher ratio = better)
--        if baseline_data['ratio'] > ours_data['ratio']:
-+        if baseline_data['ratio'] > other_data['ratio']:
-             baseline_color, ours_color = GREEN, RED
-             better = baseline_name
-             diff_color = RED
--        elif ours_data['ratio'] > baseline_data['ratio']:
-+        elif other_data['ratio'] > baseline_data['ratio']:
-             baseline_color, ours_color = RED, GREEN
--            better = "Ours"
-+            better = other_name
-             diff_color = GREEN
-         else:
-             baseline_color, ours_color = "", ""
-             better = "Tie"
-             diff_color = ""
-
-@@
-         print(f"{name:<10} {baseline_data['bytes']:<8} "
-               f"{baseline_color}{baseline_data['tokens']:<7}{RESET} "
-               f"{baseline_color}{baseline_data['ratio']:<7.2f}{RESET} "
--              f"{ours_color}{ours_data['tokens']:<7}{RESET} "
--              f"{ours_color}{ours_data['ratio']:<7.2f}{RESET} "
-+              f"{ours_color}{other_data['tokens']:<7}{RESET} "
-+              f"{ours_color}{other_data['ratio']:<7.2f}{RESET} "
-               f"{diff_color}{relative_diff:+7.1f}%{RESET}     "
-               f"{better:<10}")
-
--# Print comparisons
--print_comparison("GPT-2", tokenizer_results['gpt2'], tokenizer_results['ours'], all_text)
--print_comparison("GPT-4", tokenizer_results['gpt4'], tokenizer_results['ours'], all_text)
-+# Print comparison
-+print_comparison("32k", tokenizer_results['32k'], "8k", tokenizer_results['8k'], all_text)
-```
-
-Run it from the repository root, with the virtual environment activated and `NANOCHAT_BASE_DIR` set as in [`task1/script.bash`](task1/script.bash):
-
-```bash
-export NANOCHAT_BASE_DIR="./task1"
-python -m scripts.tok_eval
-```
-
-For each text sample, the printed table reports the byte count, each tokenizer's token count (sequence length) and ratio (bytes per token), and the relative difference in sequence length between the two. As expected, the 32k tokenizer compresses text into fewer tokens than the 8k tokenizer across every sample, at the cost of a larger vocabulary.
-
-To evaluate the tokenizers on your own text instead of the built-in samples, a `--text` argument was added. When it is passed, the built-in samples (and the ClimbMix train/val shard loading, which is otherwise done unconditionally) are skipped, and the comparison runs on just the given text:
-
-```diff
 +parser = argparse.ArgumentParser(description="Evaluate tokenizer compression ratio and sequence length")
 +parser.add_argument("--text", type=str, default=None, help="Custom text to evaluate instead of the built-in samples")
 +args = parser.parse_args()
-+
- # Random text I got from a random website this morning
- news_text = r"""
-@@
+ ...
 -# The tokenizer was trained on data from earlier shards, so it has seen this data
 -train_docs = next(parquets_iter_batched(split="train"))
 -train_text = "\n".join(train_docs)
@@ -283,6 +169,8 @@ To evaluate the tokenizers on your own text instead of the built-in samples, a `
 -]
 -if val_text:
 -    all_text.append(("climbmix-val", val_text))
+-
+-# Try out current default compared to GPT-2 and GPT-4 tokenizers
 +if args.text is not None:
 +    all_text = [("custom", args.text)]
 +else:
@@ -302,19 +190,76 @@ To evaluate the tokenizers on your own text instead of the built-in samples, a `
 +    ]
 +    if val_text:
 +        all_text.append(("climbmix-val", val_text))
-```
++
++# Compare our 32k and 8k vocabulary tokenizers against each other
++base_dir = get_base_dir()
++tokenizer_dirs = {
++    "32k": os.path.join(base_dir, "tokenizer_32k"),
++    "8k": os.path.join(base_dir, "tokenizer_8k"),
++}
++
++tokenizers = {}
+ tokenizer_results = {}
+ vocab_sizes = {}
 
-Usage:
+-for tokenizer_name in ["gpt2", "gpt4", "ours"]:
++for tokenizer_name, tokenizer_dir in tokenizer_dirs.items():
 
-```bash
-python -m scripts.tok_eval --text "your custom sentence here"
-```
+-    if tokenizer_name == "gpt2":
+-        tokenizer = RustBPETokenizer.from_pretrained("gpt2") # gpt-2 base model tokenizer
+-    elif tokenizer_name == "gpt4":
+-        tokenizer = RustBPETokenizer.from_pretrained("cl100k_base") # gpt-4 base model tokenizer
+-    else:
+-        tokenizer = get_tokenizer()
++    tokenizer = RustBPETokenizer.from_directory(tokenizer_dir)
++    tokenizers[tokenizer_name] = tokenizer
 
-To make the compression tangible rather than just a ratio number, when `--text` is passed the script also prints the actual token split for each tokenizer, using `id_to_token` to decode each token id back to its text piece:
+     vocab_sizes[tokenizer_name] = tokenizer.get_vocab_size()
+     tokenizer_results[tokenizer_name] = {}
+ ...
+ # Print vocab sizes
+ print(f"\nVocab sizes:")
+-print(f"GPT-2: {vocab_sizes['gpt2']}")
+-print(f"GPT-4: {vocab_sizes['gpt4']}")
+-print(f"Ours: {vocab_sizes['ours']}")
++print(f"32k tokenizer: {vocab_sizes['32k']}")
++print(f"8k tokenizer: {vocab_sizes['8k']}")
 
-```diff
- # Print comparison
- print_comparison("32k", tokenizer_results['32k'], "8k", tokenizer_results['8k'], all_text)
+-def print_comparison(baseline_name, baseline_results, ours_results, all_text):
+-    """Print comparison table between baseline tokenizer and ours."""
+-    print(f"\nComparison with {baseline_name}:")
++def print_comparison(baseline_name, baseline_results, other_name, other_results, all_text):
++    """Print comparison table between two tokenizers."""
++    print(f"\nComparison: {baseline_name} vs {other_name}:")
+     print("=" * 95)
+-    print(f"{'Text Type':<10} {'Bytes':<8} {baseline_name:<15} {'Ours':<15} {'Relative':<12} {'Better':<10}")
++    print(f"{'Text Type':<10} {'Bytes':<8} {baseline_name:<15} {other_name:<15} {'Relative':<12} {'Better':<10}")
+ ...
+-        ours_data = ours_results[name]
++        other_data = other_results[name]
+ ...
+-        relative_diff = ((baseline_data['tokens'] - ours_data['tokens']) / baseline_data['tokens']) * 100
++        relative_diff = ((baseline_data['tokens'] - other_data['tokens']) / baseline_data['tokens']) * 100
+ ...
+-        if baseline_data['ratio'] > ours_data['ratio']:
++        if baseline_data['ratio'] > other_data['ratio']:
+ ...
+-        elif ours_data['ratio'] > baseline_data['ratio']:
++        elif other_data['ratio'] > baseline_data['ratio']:
+             baseline_color, ours_color = RED, GREEN
+-            better = "Ours"
++            better = other_name
+ ...
+-              f"{ours_color}{ours_data['tokens']:<7}{RESET} "
+-              f"{ours_color}{ours_data['ratio']:<7.2f}{RESET} "
++              f"{ours_color}{other_data['tokens']:<7}{RESET} "
++              f"{ours_color}{other_data['ratio']:<7.2f}{RESET} "
+ ...
+-# Print comparisons
+-print_comparison("GPT-2", tokenizer_results['gpt2'], tokenizer_results['ours'], all_text)
+-print_comparison("GPT-4", tokenizer_results['gpt4'], tokenizer_results['ours'], all_text)
++# Print comparison
++print_comparison("32k", tokenizer_results['32k'], "8k", tokenizer_results['8k'], all_text)
 +
 +# When evaluating custom text, show the actual token split for each tokenizer
 +if args.text is not None:
@@ -325,87 +270,69 @@ To make the compression tangible rather than just a ratio number, when `--text` 
 +        print("|".join(pieces))
 ```
 
-For example, `python -m scripts.tok_eval --text "The quick brown fox jumps over the lazy dog, tokenization is fascinating."` prints:
+In the comparison table, the 32k tokenizer is the baseline: `Relative Diff %` is `(tokens_32k − tokens_8k) / tokens_32k`, so a negative number means the 8k tokenizer needs that many percent more tokens than the 32k one for the same text.
 
-```text
-32k tokenizer split (15 tokens):
-The| quick| brown| fox| jumps| over| the| lazy| dog|,| token|ization| is| fascinating|.
+Without `--text`, the script still evaluates all the built-in samples plus the ClimbMix shards, as upstream does, but for our two tokenizers:
 
-8k tokenizer split (20 tokens):
-The| quick| brown| f|ox| j|umps| over| the| l|az|y| dog|,| to|ken|ization| is| fascinating|.
+```bash
+export NANOCHAT_BASE_DIR="./task1"
+python -m scripts.tok_eval
 ```
 
-The smaller 8k vocabulary has to break common words like "fox", "jumps", and "lazy" into multiple subword pieces, while the 32k vocabulary has room to keep them as single tokens — visibly showing where the extra compression comes from.
+### Output
+
+**Tokenizers.** Both are committed, so Task 2 onwards can use them without retraining:
+
+```text
+task1/
+├── tokenizer_32k/
+│   ├── tokenizer.pkl     # 404 KB
+│   └── token_bytes.pt    # 132 KB
+└── tokenizer_8k/
+    ├── tokenizer.pkl     #  96 KB
+    └── token_bytes.pt    #  36 KB
+```
 
 ## Task 2: Pre-Training
 
-Task 2 pre-trains a `--depth 4` nanochat base model on ClimbMix under `task2/` (mirroring the `task2/script.bash` layout used for Task 1), logging bits-per-byte (bpb) — not raw loss — for both the training and validation sets so the deliverable curves are apples-to-apples across runs. Training happens on a separate machine from where this repo is edited, so all logging is written to a local CSV file instead of relying on a Weights & Biases account or internet access.
+Task 2 pre-trains a `--depth 4` nanochat base model on ClimbMix, using the 32k tokenizer from Task 1. It logs bits-per-byte (bpb) for both the training and the validation set, plots the two curves, and samples completions from the finished model. Everything lives under `task2/`.
+
+Training was run on a laptop with an NVIDIA RTX 5050 Laptop GPU (Blackwell architecture), which is the reason for Change 2 below.
 
 ### Running Task 2
 
-From the repository root, with the virtual environment activated, and after `task1/script.bash` has already been run at least once (Task 2 reuses the 32k-vocabulary tokenizer it trains):
+From the repository root, after `task1/train_tokenizers.bash` has been run at least once (or with the committed `task1/tokenizer_32k`):
 
 ```bash
-bash task2/script.bash
+bash task2/pretrain_model.bash   # download data, pre-train the depth-4 model
+bash task2/eval_model.bash       # plot the bpb curves, sample completions
 ```
 
-[`task2/script.bash`](task2/script.bash):
+[`task2/pretrain_model.bash`](task2/pretrain_model.bash):
 
-- Sets `NANOCHAT_BASE_DIR="./task2"`, so the dataset, tokenizer, checkpoints, and logs all live under `task2/`, separate from Task 1's `task1/`.
-- Copies `task1/tokenizer_32k` to `task2/tokenizer`. `base_train.py` always loads the tokenizer from `<NANOCHAT_BASE_DIR>/tokenizer` (via `nanochat.tokenizer.get_tokenizer()`/`get_token_bytes()`), and Task 1 never saves a tokenizer under that plain name (only `tokenizer_32k`/`tokenizer_8k`), so a copy is needed. The 32k tokenizer is used (over the 8k one) because it's the more standard choice for actually training a model, rather than a comparison point.
-- Downloads 500MB of ClimbMix via `python -m nanochat.dataset -s 500` (the same `-s` flag added for Task 1). `base_train.py` prints the exact required token count (from `--target-param-data-ratio=12`, its default) at startup; increase `-s` and rerun if 500MB turns out not to be enough for depth 4's token horizon.
-- Sets `NANOCHAT_ATTN_IMPL="sdpa"` to force PyTorch's SDPA attention fallback instead of nanochat's auto-detected Flash Attention 3, which crashes on Blackwell/SM 120 GPUs like the RTX 5050 Laptop this was run on ([Dao-AILab/flash-attention#1987](https://github.com/Dao-AILab/flash-attention/issues/1987)) — see Change 2 below.
-- Runs `scripts.base_train --depth=4 --eval-every=100 --window-pattern=L`. `--eval-every=100` controls how often `base_train.py` evaluates bpb (every 100 steps); Change 1 below makes it evaluate the train split at the same cadence, right alongside the val split it already evaluates there. `--window-pattern=L` follows `base_train.py`'s own startup recommendation: SDPA (forced above) has no sliding-window support, so nanochat's default alternating pattern (`SSSL`) would tank GPU utilization — `base_train.py` prints exactly this warning and suggests `L` whenever Flash Attention 3 isn't in use. Everything else is left at nanochat's own defaults — including `--save-every` (checkpoint only at the very end).
-- Finishes with `scripts.base_eval --eval bpb,sample --model-tag d4`, piped to `task2/logs/eval_d4.txt`, for a clean final bpb readout on both splits plus qualitative (unconditioned, no-system-prompt) sample completions — take 5 of the printed unconditioned samples for the report's qualitative-inspection deliverable.
+- **Line 2** sets `set -e`, so the script stops at the first failing command instead of, for example, starting training without a tokenizer.
+- **Lines 4–5** activate the virtual environment.
+- **Line 8** sets `NANOCHAT_BASE_DIR="./task2"`, so the dataset, tokenizer, checkpoints and logs all live under `task2/`, separate from Task 1's files.
+- **Line 14** sets `NANOCHAT_ATTN_IMPL="sdpa"`, which forces PyTorch's SDPA attention instead of Flash Attention 3. nanochat wrongly detects Flash Attention 3 as usable on Blackwell GPUs and crashes on the first attention call ([Dao-AILab/flash-attention#1987](https://github.com/Dao-AILab/flash-attention/issues/1987)). The environment variable is new — see Change 2 below.
+- **Lines 21–27** copy `task1/tokenizer_32k` to `task2/tokenizer`. `base_train.py` always loads the tokenizer from `<NANOCHAT_BASE_DIR>/tokenizer`, and Task 1 only saves tokenizers under `tokenizer_32k` and `tokenizer_8k`, so a copy under the plain name is needed. The script exits with an error if the Task 1 tokenizer doesn't exist. `rm -rf` runs before `cp -r` for the same reason as the `mv` in Task 1: copying onto an existing directory would nest the new copy inside the old one. The 32k tokenizer is used because it is nanochat's default vocabulary size; the 8k tokenizer was only trained as a comparison point.
+- **Line 32** downloads 500 MB of ClimbMix into `task2/base_data_climbmix/` with the `-s` flag from Task 1's Change 1. At startup, `base_train.py` prints how many tokens the run needs. If 500 MB weren't enough, the dataloader would start a second pass over the data and `-s` should be increased. For depth 4 it was enough: training finished within the first pass.
+- **Lines 38–41** run `python -m scripts.base_train` with three arguments; everything else is left at nanochat's defaults, which derive width, heads, learning rates and training horizon from `--depth`:
+  - `--depth=4` is the model size asked for in the assignment.
+  - `--eval-every=100` evaluates validation bpb every 100 steps (the default is 250). With Change 1, the training bpb is evaluated at the same moments, so this sets how many points the bpb curves have.
+  - `--window-pattern=L` gives every layer full-context attention. nanochat's default, `SSSL`, uses sliding-window attention on three out of four layers, which SDPA doesn't support; `base_train.py` itself warns about this and recommends `L` when Flash Attention 3 isn't in use.
 
-### Sampling custom completions from the base model
+[`task2/eval_model.bash`](task2/eval_model.bash):
 
-`scripts/base_eval.py`'s `--eval sample` mode ships with a fixed list of demo prompts. Pass `--prompt` (repeatable) to sample your own instead:
+- **Lines 2–14** are the same as in `pretrain_model.bash`: stop on errors, activate the environment, set `NANOCHAT_BASE_DIR="./task2"` and force SDPA (sampling runs the model too, so it needs the same attention fix).
+- **Line 17** runs [`task2/plot_bpb.py`](task2/plot_bpb.py), which reads `task2/logs/metrics.csv` (written by Change 1) and saves the training and validation bpb curves against training step to `task2/logs/bpb_curve.png`.
+- **Line 19** runs `python -m scripts.base_eval --eval sample --model-tag d4` with five `--prompt` arguments, sampling a completion of each prompt from the final `d4` checkpoint with no system prompt. The `--prompt` flag is new — see Change 3 below.
 
-```bash
-python -m scripts.base_eval --eval sample --model-tag d4 --prompt "Once upon a time,"
-```
+### Change 1 of 3: `scripts/base_train.py` — training-set bpb, and logging to a CSV file
 
-This replaces the built-in prompt list; the 8 unconditioned samples are skipped in that case, since they're only useful when sampling the default demo prompts.
+The assignment asks for training and validation bpb curves. Upstream `base_train.py` has two gaps:
 
-```diff
- def main():
-     parser = argparse.ArgumentParser(description="Base model evaluation")
-     parser.add_argument('--eval', type=str, default='core,bpb,sample', help='Comma-separated evaluations to run: core,bpb,sample (default: all)')
-+    parser.add_argument('--prompt', type=str, action='append', default=None, help='Custom prompt to sample from (can be passed multiple times); replaces the default prompt list for --eval sample')
-     parser.add_argument('--model-tag', type=str, default=None, help='nanochat model tag to identify the checkpoint directory')
- ...
-         if ddp_rank == 0:
--            prompts = [
-+            prompts = args.prompt if args.prompt is not None else [
-                 "The capital of France is",
-                 "The chemical symbol of gold is",
-                 "If yesterday was Friday, then tomorrow will be",
- ...
--            print0("\nUnconditioned samples:")
--            tokens = tokenizer("", prepend="<|bos|>")
--            uncond, _ = engine.generate_batch(tokens, num_samples=8, max_tokens=128, temperature=1.0)
--            for sample in uncond:
--                sample_str = tokenizer.decode(sample)
--                print0("-" * 80)
--                print0(sample_str)
--                unconditioned_samples.append(sample_str)
-+            if args.prompt is None:
-+                print0("\nUnconditioned samples:")
-+                tokens = tokenizer("", prepend="<|bos|>")
-+                uncond, _ = engine.generate_batch(tokens, num_samples=8, max_tokens=128, temperature=1.0)
-+                for sample in uncond:
-+                    sample_str = tokenizer.decode(sample)
-+                    print0("-" * 80)
-+                    print0(sample_str)
-+                    unconditioned_samples.append(sample_str)
-```
-
-### Why a training-set bpb curve needs a code change
-
-nanochat's `base_train.py` only ever evaluates bpb (via `nanochat.loss_eval.evaluate_bpb`) on the val split; the training curve it logs is plain EMA'd loss (nats/token), a different unit. `evaluate_bpb` itself is generic — it just evaluates the model on whatever batches it's handed — and `scripts/base_eval.py` already calls it on both `"train"` and `"val"` loaders (see [`scripts/base_eval.py`](scripts/base_eval.py)). So getting a real train bpb during training needs no new formula and no edit to `nanochat/`: it's the same unmodified `evaluate_bpb` call, just also pointed at a train-split loader, run at the same cadence as the val bpb eval nanochat already does.
-
-### Change 1 of 2: `scripts/base_train.py` — evaluate train bpb alongside val bpb, plus local CSV logging
+1. **It never measures bpb on the training set.** It only evaluates bpb on the validation split. The training number it logs is a smoothed cross-entropy loss in nats per token, which is a different unit and depends on the tokenizer, so it can't be plotted against validation bpb. The function that computes bpb, `nanochat.loss_eval.evaluate_bpb`, isn't tied to the validation split, though: it evaluates the model on whatever batches it is given, and `scripts/base_eval.py` already calls it on both splits. So the fix is a second `evaluate_bpb` call, on a data loader for the training split, next to the existing validation call.
+2. **It only logs to Weights & Biases.** Training ran offline on a separate machine without a wandb account, and with `--run=dummy` (the default) wandb logging is a no-op, so the numbers would only exist in the terminal output. The script now also writes every logged value to `<NANOCHAT_BASE_DIR>/logs/metrics.csv`.
 
 ```diff
  import os
@@ -439,15 +366,17 @@ nanochat's `base_train.py` only ever evaluates bpb (via `nanochat.loss_eval.eval
 +    # and written as a single CSV row once all of them have had a chance to run.
 +    has_pending_metrics = False
 +    pending_metrics = {"train_loss": "", "train_bpb": "", "val_bpb": ""}
- ...
+
+-    # once in a while: evaluate the val bpb (all ranks participate)
++    # once in a while: evaluate the val and train bpb (all ranks participate)
+     if args.eval_every > 0 and (last_step or step % args.eval_every == 0):
          model.eval()
          val_loader = build_val_loader()
 +        train_bpb_loader = build_train_bpb_loader()
          eval_steps = args.eval_tokens // (args.device_batch_size * args.max_seq_len * ddp_world_size)
          with disable_fp8(model):
--            val_bpb = evaluate_bpb(model, val_loader, eval_steps, token_bytes)
+             val_bpb = evaluate_bpb(model, val_loader, eval_steps, token_bytes)
 -        print0(f"Step {step:05d} | Validation bpb: {val_bpb:.6f}")
-+            val_bpb = evaluate_bpb(model, val_loader, eval_steps, token_bytes)
 +            train_bpb = evaluate_bpb(model, train_bpb_loader, eval_steps, token_bytes)
 +        print0(f"Step {step:05d} | Validation bpb: {val_bpb:.6f} | Train bpb: {train_bpb:.6f}")
          if val_bpb < min_val_bpb:
@@ -469,20 +398,8 @@ nanochat's `base_train.py` only ever evaluates bpb (via `nanochat.loss_eval.eval
 +        if master_process and has_pending_metrics:
 +            metrics_writer.writerow([step, flops_so_far, total_training_time, pending_metrics["train_loss"], pending_metrics["train_bpb"], pending_metrics["val_bpb"]])
 +            metrics_file.flush()
-+        break
+         break
  ...
-     if step % 100 == 0:
-         log_data = {
-             "step": step,
-             "total_training_flops": flops_so_far,
-             "total_training_time": total_training_time,
-             "train/loss": debiased_smooth_loss,
-             "train/lrm": lrm,
-             "train/dt": dt,
-             "train/tok_per_sec": tok_per_sec,
-             "train/mfu": mfu,
-             "train/epoch": epoch,
-         }
          wandb_run.log(log_data)
 +        has_pending_metrics = True
 +        pending_metrics["train_loss"] = debiased_smooth_loss
@@ -498,13 +415,18 @@ nanochat's `base_train.py` only ever evaluates bpb (via `nanochat.loss_eval.eval
  compute_cleanup()
 ```
 
-`build_train_bpb_loader` mirrors nanochat's own `build_val_loader` exactly — same unmodified `tokenizing_distributed_data_loader_bos_bestfit`, just `split="train"` instead of `"val"` — and is a separate loader instance from `train_loader`, so evaluating bpb on it never consumes or perturbs the actual training data stream. Both bpb evaluations now happen together, under the same `model.eval()` / `disable_fp8` / `model.train()` guard, at the existing `--eval-every` cadence — no new cadence, no approximation, no state (like a `bytes_per_token` ratio) to thread through checkpoint resume. `metrics.csv` is opened once (only by `master_process`, the same convention nanochat already uses for checkpoint saving): truncated (`"w"`) on a fresh run so each new model starts clean, appended (`"a"`) on resume so history isn't lost, with a header written whenever the file comes up empty.
+How the pieces fit together:
 
-The eval block and the loss-logging block run on different cadences (`--eval-every` vs. every 100 steps) but can land on the same `step`, so writing a CSV row directly from each block produced two rows for that step — one with `train_bpb`/`val_bpb` and a blank `train_loss`, the other the reverse. Both blocks now write into a shared `pending_metrics` dict instead, and a single `metrics_writer.writerow(...)` flushes it once per step, after whichever blocks were going to run this step already have. Each `step` now appears on at most one CSV row, with any field no block touched left as `""`. Both rows also carry `total_training_flops` and `total_training_time`, mirroring the fields already sent to `wandb_run.log(...)` in each block, so the CSV isn't missing anything wandb gets. `wandb_run.log(...)` itself is untouched (still a no-op under `--run=dummy`); the CSV write is purely additive. The file is closed at the very end, after the training loop but before cleanup.
+- **Training-set bpb.** `build_train_bpb_loader` is a copy of nanochat's `build_val_loader` with `split="train"`. It creates a new loader each time, separate from `train_loader`, so measuring bpb never takes batches away from training. Both bpb evaluations run in the same block, at the same `--eval-every` steps and on the same number of tokens (`--eval-tokens`), so the two curves are measured the same way.
+- **The CSV file.** Only the main process (`master_process`) writes it, the same convention nanochat uses for saving checkpoints. A fresh run overwrites any earlier `metrics.csv`; a run resumed with `--resume-from-step` appends to it instead, so no history is lost. The header is written whenever the file starts empty.
+- **One row per step.** The bpb evaluation (every `--eval-every` steps) and the loss logging (every 100 steps) can happen on the same step. Instead of each writing its own row, both fill in a shared `pending_metrics` dict, and one row is written once both have run. Columns that weren't measured on that step are left empty. The `last_step` branch writes its row before the loop exits, because the normal write at the end of the loop is never reached on the final step.
+- **wandb is untouched**, apart from also receiving `train/bpb`. Every column in the CSV is one that is already sent to wandb.
 
-### Change 2 of 2: `nanochat/flash_attention.py` — let `NANOCHAT_ATTN_IMPL` force the SDPA fallback
+### Change 2 of 3: `nanochat/flash_attention.py` — force SDPA with `NANOCHAT_ATTN_IMPL`
 
-nanochat's FA3 auto-detection wrongly reports Flash Attention 3 as available on Blackwell/SM 120 GPUs (it checks that a kernel _package_ exists, not that it has a binary for this specific chip), which crashes the first attention call instead of falling back — see [Dao-AILab/flash-attention#1987](https://github.com/Dao-AILab/flash-attention/issues/1987). There was already an unused `_override_impl` variable meant for exactly this kind of override, so we wire it up to an env var:
+On GPUs other than Hopper, nanochat decides Flash Attention 3 is available if the `kernels-community/flash-attn3` kernel package exists (`has_kernel`). It doesn't check that the package actually contains a build for the GPU it's running on. On a Blackwell GPU like the RTX 5050, the check passes, but the first attention call then crashes instead of falling back to SDPA ([Dao-AILab/flash-attention#1987](https://github.com/Dao-AILab/flash-attention/issues/1987)).
+
+`flash_attention.py` already has an `_override_impl` variable for exactly this, but upstream it is hard-coded to `None` with no way to set it. It now reads the `NANOCHAT_ATTN_IMPL` environment variable:
 
 ```diff
 +import os
@@ -517,33 +439,180 @@ nanochat's FA3 auto-detection wrongly reports Flash Attention 3 as available on 
 +_override_impl = os.environ.get("NANOCHAT_ATTN_IMPL")
 ```
 
-`task2/script.bash` sets `NANOCHAT_ATTN_IMPL="sdpa"`, so `_resolve_use_fa3()` returns `False` unconditionally and every attention call takes the SDPA path, never touching the broken kernel.
+With `NANOCHAT_ATTN_IMPL=sdpa`, `_resolve_use_fa3()` returns `False` before it looks at the detection result, so every attention call uses SDPA. If the variable is unset, behaviour is exactly as upstream. An environment variable was chosen over a command-line flag because `flash_attention.py` is imported by the model code used by every script (`base_train.py`, `base_eval.py`, `chat_sft.py`, …), so one exported variable covers all of them.
 
-### Plotting the bpb curves
+### Change 3 of 3: `scripts/base_eval.py` — sample your own prompts with `--prompt`
 
-Once `task2/script.bash` has finished (or partway through a long run — `metrics.csv` is flushed after every logged row), run:
+The report asks for five completions from the pre-trained model. `base_eval.py --eval sample` only samples a fixed, hard-coded list of prompts, followed by eight unconditioned samples (generated from an empty prompt). A repeatable `--prompt` argument was added so the prompts can be chosen on the command line:
 
-```bash
-python -m task2.plot_bpb
+```diff
+     parser.add_argument('--eval', type=str, default='core,bpb,sample', help='Comma-separated evaluations to run: core,bpb,sample (default: all)')
++    parser.add_argument('--prompt', type=str, action='append', default=None, help='Custom prompt to sample from (can be passed multiple times); replaces the default prompt list for --eval sample')
+     parser.add_argument('--model-tag', type=str, default=None, help='nanochat model tag to identify the checkpoint directory')
+ ...
+         if ddp_rank == 0:
+-            prompts = [
++            prompts = args.prompt if args.prompt is not None else [
+                 "The capital of France is",
+                 "The chemical symbol of gold is",
+                 "If yesterday was Friday, then tomorrow will be",
+ ...
+-            print0("\nUnconditioned samples:")
+-            tokens = tokenizer("", prepend="<|bos|>")
+-            uncond, _ = engine.generate_batch(tokens, num_samples=8, max_tokens=128, temperature=1.0)
+-            for sample in uncond:
+-                sample_str = tokenizer.decode(sample)
+-                print0("-" * 80)
+-                print0(sample_str)
+-                unconditioned_samples.append(sample_str)
++            if args.prompt is None:
++                print0("\nUnconditioned samples:")
++                tokens = tokenizer("", prepend="<|bos|>")
++                uncond, _ = engine.generate_batch(tokens, num_samples=8, max_tokens=128, temperature=1.0)
++                for sample in uncond:
++                    sample_str = tokenizer.decode(sample)
++                    print0("-" * 80)
++                    print0(sample_str)
++                    unconditioned_samples.append(sample_str)
 ```
 
-[`task2/plot_bpb.py`](task2/plot_bpb.py) reads `task2/logs/metrics.csv` and saves `task2/bpb_curve.png` with matplotlib — plotting `train_bpb` and `val_bpb` against `step` on the same axes. This is the "training and validation set bits-per-byte curves" deliverable.
-
-## Quick start
-
-For a fresh Linux or WSL installation, the complete sequence is:
+When `--prompt` is given, it replaces the built-in prompt list and the unconditioned samples are skipped. Without it, the script behaves exactly as upstream. For example:
 
 ```bash
-git clone https://git.liacs.nl/s5107911/agenticllm-assignment1-group3.git
-cd agenticllm-assignment1-group3
-uv sync --extra gpu  # use --extra cpu for CPU-only execution
-source .venv/bin/activate
-bash task1/script.bash
-bash task2/script.bash
-python -m task2.plot_bpb
+export NANOCHAT_BASE_DIR="./task2"
+export NANOCHAT_ATTN_IMPL="sdpa"
+python -m scripts.base_eval --eval sample --model-tag d4 --prompt "Once upon a time,"
 ```
 
-Run all commands from the WSL/Linux terminal. If you chose the CPU setup, replace `gpu` with `cpu` in the `uv sync` command.
+### Output
+
+The trained model and its training log are committed, so Tasks 3 and 4 can use them without retraining:
+
+```text
+task2/
+├── base_checkpoints/d4/
+│   ├── model_000528.pt          # model weights after the final step (528)
+│   ├── optim_000528_rank0.pt    # optimizer state, used to warm-start Task 3
+│   └── meta_000528.json         # model config, training arguments, final val bpb
+└── logs/
+    ├── metrics.csv              # step, FLOPs, time, train loss, train bpb, val bpb
+    └── bpb_curve.png            # training and validation bpb curves (eval_model.bash)
+```
+
+## Task 3: Mid-Training and Supervised Fine-Tuning
+
+nanochat has only two training stages out of the box: pre-training (`base_train.py`) and SFT (`chat_sft.py`). Its SFT stage trains on one mixed dataset of general conversation (SmolTalk), knowledge questions (MMLU) and grade-school math (GSM8K). Task 3 splits that single run into two stages, starting from the Task 2 `d4` base checkpoint (step 528):
+
+1. **Stage 1 — mid-training** ([`scripts/chat_midtrain.py`](scripts/chat_midtrain.py)): reasoning and knowledge data only (MMLU + GSM8K).
+2. **Stage 2 — SFT** ([`scripts/chat_sft.py`](scripts/chat_sft.py)): instruction-following data only (SmolTalk), starting from the Stage 1 checkpoint instead of the base model.
+
+Both stages were run on a single NVIDIA RTX 2080 Ti on the `tritanium` server, not on the laptop used for Task 2.
+
+### Change 1 of 3: `scripts/chat_midtrain.py` — a new mid-training script
+
+The assignment describes Stage 1 as editing `train_tasks` in `chat_sft.py` and Stage 2 as editing it again. Doing that in place would mean the repository only ever contains one of the two stages, and rerunning Stage 1 would require undoing the Stage 2 edit. Instead, Stage 1 gets its own script. `chat_midtrain.py` is a copy of the original `chat_sft.py` with four changes:
+
+- **Training data:** SmolTalk is removed from `train_tasks`, leaving MMLU and GSM8K, as the assignment asks.
+- **Validation data:** SmolTalk is removed from the validation mixture as well, so Stage 1's validation bpb only measures the kind of data that stage trains on.
+- **Output directory:** the checkpoint is saved to `chatmidtrain_checkpoints/` instead of `chatsft_checkpoints/`. Otherwise Stage 2 would overwrite it, and Stage 2 couldn't tell the two checkpoints apart.
+- **wandb project:** runs are logged under `nanochat-midtrain` instead of `nanochat-sft`, so the two stages appear as separate projects.
+
+Diff against the original `chat_sft.py`:
+
+```diff
+-parser = argparse.ArgumentParser(description="Supervised fine-tuning (SFT) the model")
++parser = argparse.ArgumentParser(description="Midtraining the model")
+ ...
+-wandb_run = DummyWandb() if use_dummy_wandb else wandb.init(project="nanochat-sft", name=args.run, config=user_config)
++wandb_run = DummyWandb() if use_dummy_wandb else wandb.init(project="nanochat-midtrain", name=args.run, config=user_config)
+ ...
+ # SFT data mixture and DataLoader
+ train_tasks = [
+-    SmolTalk(split="train"), # 460K rows of general conversations
+     *[MMLU(subset="all", split="auxiliary_train") for _ in range(args.mmlu_epochs)], # 100K rows per epoch
+     *[GSM8K(subset="main", split="train") for _ in range(args.gsm8k_epochs)], # 8K rows per epoch
+ ]
+ train_dataset = TaskMixture(train_tasks)
+ print0(f"Training mixture: {len(train_dataset):,} rows (MMLU x{args.mmlu_epochs}, GSM8K x{args.gsm8k_epochs})")
+ val_dataset = TaskMixture([
+-    SmolTalk(split="test"), # 24K rows in test set
+     MMLU(subset="all", split="test", stop=5200), # 14K rows in test set, use only 5.2K to match the train ratios
+     GSM8K(subset="main", split="test", stop=420), # 1.32K rows in test set, use only 420 to match the train ratios
+ ]) # total: 24K + 5.2K + 0.42K ~= 29.6K rows
+ ...
+-        checkpoint_dir = os.path.join(base_dir, "chatsft_checkpoints", output_dirname)
++        checkpoint_dir = os.path.join(base_dir, "chatmidtrain_checkpoints", output_dirname)
+```
+
+Everything else is unchanged from `chat_sft.py`. The script still loads the `"base"` checkpoint and its optimizer state, and keeps all of the original command-line arguments, including `--mmlu-epochs` (default 3) and `--gsm8k-epochs` (default 4).
+
+### Change 2 of 3: `nanochat/checkpoint_manager.py` — a `"midtrain"` checkpoint source
+
+Scripts don't load checkpoints by path. They call `load_model(source, ...)` with a source name, and `load_model` looks the name up in a fixed table to find the checkpoint directory under `NANOCHAT_BASE_DIR`. The table only knew `"base"`, `"sft"` and `"rl"`, so there was no way to load the new `chatmidtrain_checkpoints/` directory. A `"midtrain"` entry is added:
+
+```diff
+ def load_model(source, *args, **kwargs):
+     model_dir = {
+         "base": "base_checkpoints",
++        "midtrain": "chatmidtrain_checkpoints",
+         "sft": "chatsft_checkpoints",
+         "rl": "chatrl_checkpoints",
+     }[source]
+```
+
+Stage 2 uses this to load the Stage 1 checkpoint (Change 3). Because `scripts/chat_eval.py` loads models through the same `load_model`, the Stage 1 checkpoint can also be evaluated with `chat_eval.py -i midtrain`.
+
+### Change 3 of 3: `scripts/chat_sft.py` — SmolTalk only, loaded from the Stage 1 checkpoint
+
+For Stage 2, the assignment asks for SFT on SmolTalk only, starting from the Stage 1 checkpoint instead of the base model. That takes two edits to `chat_sft.py`: the model is loaded from the `"midtrain"` source added in Change 2, and MMLU and GSM8K are removed from `train_tasks`.
+
+```diff
+ # Load the model and tokenizer
+-model, tokenizer, meta = load_model("base", device, phase="train", model_tag=args.model_tag, step=args.model_step)
++model, tokenizer, meta = load_model("midtrain", device, phase="train", model_tag=args.model_tag, step=args.model_step)
+ ...
+ train_tasks = [
+     SmolTalk(split="train"), # 460K rows of general conversations
+-    *[MMLU(subset="all", split="auxiliary_train") for _ in range(args.mmlu_epochs)], # 100K rows per epoch
+-    *[GSM8K(subset="main", split="train") for _ in range(args.gsm8k_epochs)], # 8K rows per epoch
+ ]
+```
+
+The validation mixture was left unchanged (SmolTalk + MMLU + GSM8K test splits). Because the `load_model` source is now hard-coded to `"midtrain"`, `chat_sft.py` can no longer start from a base checkpoint: it always loads from `chatmidtrain_checkpoints`.
+
+### Output
+
+Each stage produced a checkpoint and a wandb run directory. Both were copied into the repository from the server:
+
+```text
+task3_midtrain/                              # Stage 1: mid-training
+├── chatmidtrain_checkpoints/d4/
+│   ├── model_000464.pt                      # model weights after the final step (464)
+│   ├── optim_000464_rank0.pt                # optimizer state
+│   └── meta_000464.json                     # model config, training arguments, final val bpb
+└── midtrain_logs/                           # wandb run directory
+    ├── files/
+    │   ├── output.log                       # full terminal output: per-step loss, val bpb, final evaluation
+    │   ├── config.yaml                      # all command-line arguments of the run
+    │   ├── wandb-summary.json               # final value of every logged metric
+    │   ├── wandb-metadata.json              # exact command, git commit, hardware
+    │   └── requirements.txt                 # installed Python packages
+    ├── logs/                                # wandb's own debug logs
+    └── run-tty968p7.wandb                   # binary wandb run file (all logged metrics)
+task3_sft/                                   # Stage 2: SFT
+├── chatsft_checkpoints/d4/
+│   ├── model_000718.pt                      # model weights after the final step (718)
+│   ├── optim_000718_rank0.pt
+│   └── meta_000718.json
+└── chatsft_logs/                            # wandb run directory, same layout as above
+    ├── files/
+    ├── logs/
+    └── run-hki626fq.wandb
+```
+
+The checkpoints were produced by these commands (taken from each run's `wandb-metadata.json`). Both ran with nanochat's default `NANOCHAT_BASE_DIR`, `~/.cache/nanochat`:
+
+As with Task 2, the `.pt` files are stored with Git LFS.
 
 ## Repository layout
 
@@ -552,21 +621,23 @@ task1/
 |-- base_data_climbmix/  # downloaded ClimbMix shards
 |-- tokenizer_32k/       # trained 32k-vocab tokenizer
 |-- tokenizer_8k/        # trained 8k-vocab tokenizer
-`-- script.bash          # dataset download + tokenizer training script
+|-- train_tokenizers.bash # dataset download + tokenizer training + comparison
+`-- eval_tokenizers.bash  # tokenizer comparison only
 task2/
 |-- base_checkpoints/d4/ # saved model + optimizer checkpoint
-|-- logs/                # metrics.csv (train/val bpb) and eval_d4.txt (final bpb + samples)
-|-- plot_bpb.py          # renders bpb_curve.png from logs/metrics.csv
-`-- script.bash          # dataset download + pre-training + eval driver
+|-- logs/                # metrics.csv (train/val bpb) and bpb_curve.png
+|-- plot_bpb.py          # renders logs/bpb_curve.png from logs/metrics.csv
+|-- pretrain_model.bash  # dataset download + pre-training
+`-- eval_model.bash      # bpb plot + sample completions
+task3_midtrain/
+|-- chatmidtrain_checkpoints/d4/  # Stage 1 (mid-training) model + optimizer checkpoint
+`-- midtrain_logs/                # wandb run files; files/output.log is the full training log
+task3_sft/
+|-- chatsft_checkpoints/d4/       # Stage 2 (SFT) model + optimizer checkpoint
+`-- chatsft_logs/                 # wandb run files; files/output.log is the full training log
 nanochat/                # project source code
 scripts/                 # executable Python scripts
 tests/                   # test suite
 pyproject.toml           # project and dependency configuration
 uv.lock                 # locked dependency versions
 ```
-
-## Troubleshooting
-
-- **`uv: command not found`**: restart the Linux/WSL terminal after installing `uv`, or follow the PATH instructions printed by the installer.
-- **`git: command not found`**: install Git inside Linux/WSL with `sudo apt update && sudo apt install git`.
-- **GPU setup problems in WSL**: ensure WSL2 and the Windows NVIDIA driver are installed and that `nvidia-smi` works inside WSL. Otherwise use the CPU setup.

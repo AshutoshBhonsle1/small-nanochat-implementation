@@ -1,8 +1,8 @@
 """
-Plot the training and validation bits-per-byte (bpb) curves from task2/script.bash's run.
+Plot the training and validation bits-per-byte (bpb) curves from task2/pretrain_model.bash's run.
 
 Reads task2/logs/metrics.csv (written by the local-logging diff in scripts/base_train.py)
-and saves task2/bpb_curve.png.
+and saves task2/logs/bpb_curve.png.
 
 Usage:
     python -m task2.plot_bpb
