@@ -496,7 +496,8 @@ task2/
 │   └── meta_000528.json         # model config, training arguments, final val bpb
 └── logs/
     ├── metrics.csv              # step, FLOPs, time, train loss, train bpb, val bpb
-    └── bpb_curve.png            # training and validation bpb curves (eval_model.bash)
+    ├── bpb_curve.png            # training and validation bpb curves (eval_model.bash)
+    └── chat_eval_base.txt       # chat_eval.py scores of the base model (see Task 3, Evaluation)
 ```
 
 ## Task 3: Mid-Training and Supervised Fine-Tuning
@@ -586,6 +587,7 @@ Each stage produced a checkpoint and a wandb run directory. Both were copied int
 
 ```text
 task3_midtrain/                              # Stage 1: mid-training
+├── chat_eval_midtrain.txt                   # chat_eval.py scores of this checkpoint (see Evaluation)
 ├── chatmidtrain_checkpoints/d4/
 │   ├── model_000464.pt                      # model weights after the final step (464)
 │   ├── optim_000464_rank0.pt                # optimizer state
@@ -600,6 +602,7 @@ task3_midtrain/                              # Stage 1: mid-training
     ├── logs/                                # wandb's own debug logs
     └── run-tty968p7.wandb                   # binary wandb run file (all logged metrics)
 task3_sft/                                   # Stage 2: SFT
+├── chat_eval_sft.txt                        # chat_eval.py scores of this checkpoint (see Evaluation)
 ├── chatsft_checkpoints/d4/
 │   ├── model_000718.pt                      # model weights after the final step (718)
 │   ├── optim_000718_rank0.pt
@@ -614,6 +617,30 @@ The checkpoints were produced by these commands (taken from each run's `wandb-me
 
 As with Task 2, the `.pt` files are stored with Git LFS.
 
+### Evaluation
+
+The pre-trained, mid-trained and SFT checkpoints were each evaluated with nanochat's [`scripts/chat_eval.py`](scripts/chat_eval.py) on the full test sets of ARC-Easy, ARC-Challenge, MMLU, GSM8K (1,319 problems) and HumanEval (164 problems). These scores are the ones in the report's Task 3 evaluation table. Each result file sits next to the checkpoint it evaluates:
+
+| File | Checkpoint evaluated |
+|---|---|
+| [`task2/logs/chat_eval_base.txt`](task2/logs/chat_eval_base.txt) | pre-trained base model (`task2/base_checkpoints/d4`, step 528) |
+| [`task3_midtrain/chat_eval_midtrain.txt`](task3_midtrain/chat_eval_midtrain.txt) | Stage 1, mid-training (`chatmidtrain_checkpoints/d4`, step 464) |
+| [`task3_sft/chat_eval_sft.txt`](task3_sft/chat_eval_sft.txt) | Stage 2, SFT (`chatsft_checkpoints/d4`, step 718) |
+
+Each file is the raw terminal output of one run: the progress lines of each benchmark, a `<task> accuracy: …` line for all five benchmarks, and the final `ChatCORE metric`: each task's accuracy rescaled so that 0 is random guessing and 1 is perfect, averaged over the five tasks.
+
+The runs were done on the RTX 5050 laptop, with the same environment variables as Task 2 and `NANOCHAT_BASE_DIR` pointing at the folder that holds each checkpoint. nanochat loads the tokenizer from `<NANOCHAT_BASE_DIR>/tokenizer`, so the Task 1 tokenizer is first copied there, as in `pretrain_model.bash`:
+
+```bash
+source .venv/bin/activate
+export NANOCHAT_ATTN_IMPL="sdpa"
+NANOCHAT_BASE_DIR=./task2 python -m scripts.chat_eval -i base -g d4 2>&1 | tee task2/logs/chat_eval_base.txt
+rm -rf task3_midtrain/tokenizer && cp -r task1/tokenizer_32k task3_midtrain/tokenizer
+NANOCHAT_BASE_DIR=./task3_midtrain python -m scripts.chat_eval -i midtrain -g d4 2>&1 | tee task3_midtrain/chat_eval_midtrain.txt
+rm -rf task3_sft/tokenizer && cp -r task1/tokenizer_32k task3_sft/tokenizer
+NANOCHAT_BASE_DIR=./task3_sft python -m scripts.chat_eval -i sft -g d4 2>&1 | tee task3_sft/chat_eval_sft.txt
+```
+
 ## Repository layout
 
 ```text
@@ -625,14 +652,16 @@ task1/
 `-- eval_tokenizers.bash  # tokenizer comparison only
 task2/
 |-- base_checkpoints/d4/ # saved model + optimizer checkpoint
-|-- logs/                # metrics.csv (train/val bpb) and bpb_curve.png
+|-- logs/                # metrics.csv (train/val bpb), bpb_curve.png, chat_eval_base.txt
 |-- plot_bpb.py          # renders logs/bpb_curve.png from logs/metrics.csv
 |-- pretrain_model.bash  # dataset download + pre-training
 `-- eval_model.bash      # bpb plot + sample completions
 task3_midtrain/
+|-- chat_eval_midtrain.txt        # chat_eval.py scores of the Stage 1 checkpoint
 |-- chatmidtrain_checkpoints/d4/  # Stage 1 (mid-training) model + optimizer checkpoint
 `-- midtrain_logs/                # wandb run files; files/output.log is the full training log
 task3_sft/
+|-- chat_eval_sft.txt             # chat_eval.py scores of the Stage 2 checkpoint
 |-- chatsft_checkpoints/d4/       # Stage 2 (SFT) model + optimizer checkpoint
 `-- chatsft_logs/                 # wandb run files; files/output.log is the full training log
 nanochat/                # project source code
